@@ -160,23 +160,60 @@ function roundRect(context, x, y, w, h, r) {
   context.closePath();
 }
 
-function wrapGlyphs(text, maxWidth, font) {
+const graphemeSplitter = (() => {
+  try {
+    return new Intl.Segmenter("my", { granularity: "grapheme" });
+  } catch {
+    return null;
+  }
+})();
+
+function graphemes(text) {
+  if (graphemeSplitter) {
+    return [...graphemeSplitter.segment(text)].map((part) => part.segment);
+  }
+  return [...text];
+}
+
+function wrapLines(text, maxWidth, font, maxLines = 3) {
   ctx.font = font;
   if (ctx.measureText(text).width <= maxWidth) return [text];
-  const chars = [...text];
+
   const lines = [];
+  const words = text.split(/\s+/).filter(Boolean);
   let line = "";
-  for (const ch of chars) {
-    const next = line + ch;
-    if (ctx.measureText(next).width > maxWidth && line) {
-      lines.push(line);
-      line = ch;
-    } else {
-      line = next;
+
+  const flush = () => {
+    if (line) lines.push(line);
+    line = "";
+  };
+
+  for (const word of words) {
+    if (ctx.measureText(word).width <= maxWidth) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > maxWidth) {
+        flush();
+        line = word;
+      } else {
+        line = next;
+      }
+      continue;
     }
+    if (line) flush();
+    let chunk = "";
+    for (const g of graphemes(word)) {
+      const next = chunk + g;
+      if (chunk && ctx.measureText(next).width > maxWidth) {
+        lines.push(chunk);
+        chunk = g;
+      } else {
+        chunk = next;
+      }
+    }
+    line = chunk;
   }
   if (line) lines.push(line);
-  return lines.slice(0, 3);
+  return lines.slice(0, maxLines);
 }
 
 function computeLayout(cssSize) {
@@ -288,7 +325,8 @@ function drawBoard() {
 }
 
 function barRect(rect) {
-  const t = Math.min(rect.w, rect.h) * 0.22;
+  const depth = rect.side === "left" || rect.side === "right" ? rect.w : rect.h;
+  const t = Math.max(11, Math.min(22, depth * 0.2));
   if (rect.side === "bottom") return { x: rect.x, y: rect.y, w: rect.w, h: t };
   if (rect.side === "top") return { x: rect.x, y: rect.y + rect.h - t, w: rect.w, h: t };
   if (rect.side === "left") return { x: rect.x + rect.w - t, y: rect.y, w: t, h: rect.h };
@@ -304,102 +342,144 @@ function drawTile(tile, rect) {
 
   ctx.save();
   roundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 4);
-  ctx.fillStyle = tile.type === "gyin" ? "#3b2218" : tile.type === "kyaw" ? "#1d3d32" : "#f3ead6";
-  if (tile.type === "go") ctx.fillStyle = "#e8c96a";
-  if (tile.type === "jail") ctx.fillStyle = "#d9c4a3";
-  if (tile.type === "safe") ctx.fillStyle = "#cfe7d8";
-  if (tile.type === "gotojail") ctx.fillStyle = "#e4b4aa";
+  ctx.clip();
+
+  ctx.fillStyle = tile.type === "gyin" ? "#3b2218" : tile.type === "kyaw" ? "#1d3d32" : "#f4ead6";
+  if (tile.type === "go") ctx.fillStyle = "#f7e7b0";
+  if (tile.type === "jail") ctx.fillStyle = "#e3d2b6";
+  if (tile.type === "safe") ctx.fillStyle = "#d5eee0";
+  if (tile.type === "gotojail") ctx.fillStyle = "#f0c9be";
   if (tile.type === "tax") ctx.fillStyle = "#efe2c8";
   if (tile.type === "transit") ctx.fillStyle = "#ece6dc";
   if (tile.type === "utility") ctx.fillStyle = "#e4e8ea";
   ctx.fill();
 
-  if (tile.group && GROUPS[tile.group] && (tile.type === "property")) {
+  if (tile.type === "property" && tile.group && GROUPS[tile.group]) {
     const bar = barRect(rect);
     if (bar) {
       ctx.fillStyle = GROUPS[tile.group].color;
-      ctx.fillRect(bar.x + 1, bar.y + 1, bar.w - 2, bar.h - 2);
+      ctx.fillRect(bar.x, bar.y, bar.w, bar.h);
     }
   }
-
-  ctx.strokeStyle = isSelected ? "#f4d06a" : isHere ? "#2ea572" : isHover ? "#d7a84a" : "rgba(40,24,10,0.45)";
-  ctx.lineWidth = isSelected || isHere ? 2.4 : 1;
-  roundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 4);
-  ctx.stroke();
 
   drawTileLabel(tile, rect);
   drawOwnership(tile, rect);
   ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = isSelected ? "#f4d06a" : isHere ? "#2ea572" : isHover ? "#d7a84a" : "rgba(40,24,10,0.45)";
+  ctx.lineWidth = isSelected || isHere ? 2.4 : 1;
+  roundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function labelText(tile) {
+  return tile.short || tile.name;
+}
+
+function drawFittedLines(text, maxWidth, maxHeight, color, family = '"Noto Sans Myanmar", "Noto Sans"') {
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  let size = Math.min(13, maxHeight * 0.55);
+  while (size >= 7) {
+    ctx.font = `700 ${size}px ${family}`;
+    if (ctx.measureText(text).width <= maxWidth && size <= maxHeight) {
+      ctx.fillText(text, 0, 0);
+      return size;
+    }
+    size -= 0.5;
+  }
+
+  size = Math.min(10, maxHeight * 0.38);
+  let lines = wrapLines(text, maxWidth, `700 ${size}px ${family}`, 2);
+  while (size >= 7) {
+    const font = `700 ${size}px ${family}`;
+    lines = wrapLines(text, maxWidth, font, 2);
+    const lineH = size * 1.15;
+    const fits = lines.length * lineH <= maxHeight + 1;
+    if (fits) {
+      ctx.font = font;
+      lines.forEach((line, i) => {
+        ctx.fillText(line, 0, (i - (lines.length - 1) / 2) * lineH);
+      });
+      return size;
+    }
+    size -= 0.5;
+  }
+  ctx.font = `700 7px ${family}`;
+  ctx.fillText(text, 0, 0);
+  return 7;
 }
 
 function drawTileLabel(tile, rect) {
   const isCorner = ["br", "bl", "tl", "tr"].includes(rect.side);
   const color = ["gyin", "kyaw"].includes(tile.type) ? "#f6edd8" : "#1c140c";
-  const pad = 4;
   const bar = tile.type === "property" ? barRect(rect) : null;
 
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
   if (isCorner) {
-    const font = `700 ${Math.max(11, rect.w * 0.12)}px "Noto Sans Myanmar"`;
-    const lines = wrapGlyphs(tile.name, rect.w - 12, font);
-    ctx.font = font;
-    lines.forEach((line, i) => {
-      ctx.fillText(line, rect.x + rect.w / 2, rect.y + rect.h * 0.38 + i * 16);
-    });
-    ctx.font = `600 ${Math.max(9, rect.w * 0.08)}px "Noto Sans"`;
-    ctx.fillStyle = "rgba(28,20,12,0.75)";
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.save();
+    ctx.translate(rect.x + rect.w / 2, rect.y + rect.h * 0.42);
+    drawFittedLines(tile.name, rect.w - 14, rect.h * 0.46, color);
+    ctx.restore();
+    ctx.font = `600 ${Math.max(8, rect.w * 0.075)}px "Noto Sans"`;
+    ctx.fillStyle = "rgba(28,20,12,0.72)";
     ctx.fillText(tile.nameEn, rect.x + rect.w / 2, rect.y + rect.h * 0.78);
     return;
   }
 
-  const cx = rect.x + rect.w / 2;
-  const cy = rect.y + rect.h / 2;
-  const maxW = (rect.side === "bottom" || rect.side === "top" ? rect.w : rect.h) - 8;
-  const font = `700 ${Math.max(8, Math.min(rect.w, rect.h) * 0.13)}px "Noto Sans Myanmar"`;
-  const lines = wrapGlyphs(tile.name, maxW, font);
+  const along = rect.side === "bottom" || rect.side === "top" ? rect.w : rect.h;
+  const depth = rect.side === "bottom" || rect.side === "top" ? rect.h : rect.w;
+  const barT = bar ? (rect.side === "bottom" || rect.side === "top" ? bar.h : bar.w) : 0;
+  const priceBand = tile.price || tile.amount ? Math.max(11, depth * 0.16) : 0;
+  const nameMaxW = along - 8;
+  const nameMaxH = Math.max(16, depth - barT - priceBand - 8);
 
   ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
   if (rect.side === "left") {
-    ctx.translate(cx - 4, cy);
+    ctx.translate(rect.x + (depth - barT) / 2, rect.y + rect.h / 2);
     ctx.rotate(-Math.PI / 2);
   } else if (rect.side === "right") {
-    ctx.translate(cx + 4, cy);
+    ctx.translate(rect.x + barT + (depth - barT) / 2, rect.y + rect.h / 2);
     ctx.rotate(Math.PI / 2);
   } else if (rect.side === "bottom") {
-    ctx.translate(cx, cy + (bar ? 6 : 0));
+    ctx.translate(rect.x + rect.w / 2, rect.y + barT + nameMaxH / 2 + 1);
   } else {
-    ctx.translate(cx, cy - (bar ? 6 : 0));
+    ctx.translate(rect.x + rect.w / 2, rect.y + priceBand + nameMaxH / 2);
   }
 
-  ctx.font = font;
-  ctx.fillStyle = color;
-  lines.forEach((line, i) => {
-    ctx.fillText(line, 0, (i - (lines.length - 1) / 2) * 12);
-  });
+  drawFittedLines(labelText(tile), nameMaxW, nameMaxH, color);
   ctx.restore();
 
-  if (tile.price) {
-    ctx.save();
-    ctx.fillStyle = "#5a4630";
-    ctx.font = `700 ${Math.max(8, Math.min(rect.w, rect.h) * 0.1)}px "Noto Sans"`;
-    const label = formatMMK(tile.price).replace(" Ks", "");
-    if (rect.side === "bottom") ctx.fillText(label, cx, rect.y + rect.h - pad - 6);
-    if (rect.side === "top") ctx.fillText(label, cx, rect.y + pad + 8);
-    if (rect.side === "left") {
-      ctx.translate(rect.x + 10, cy);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText(label, 0, 0);
-    }
-    if (rect.side === "right") {
-      ctx.translate(rect.x + rect.w - 10, cy);
-      ctx.rotate(Math.PI / 2);
-      ctx.fillText(label, 0, 0);
-    }
-    ctx.restore();
+  const price = tile.price || tile.amount;
+  if (!price) return;
+  const label = formatMMK(price).replace(" Ks", "");
+  ctx.save();
+  ctx.fillStyle = "#5c4630";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `700 ${Math.max(7.5, Math.min(10, along * 0.16))}px "Noto Sans"`;
+  if (rect.side === "bottom") ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h - priceBand / 2);
+  if (rect.side === "top") ctx.fillText(label, rect.x + rect.w / 2, rect.y + priceBand / 2);
+  if (rect.side === "left") {
+    ctx.translate(rect.x + priceBand / 2, rect.y + rect.h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(label, 0, 0);
   }
+  if (rect.side === "right") {
+    ctx.translate(rect.x + rect.w - priceBand / 2, rect.y + rect.h / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText(label, 0, 0);
+  }
+  ctx.restore();
 }
 
 function drawOwnership(tile, rect) {
@@ -459,21 +539,27 @@ function drawTokens() {
     const idx = mates.indexOf(player);
     const pos = tokenDrawPos(player, idx);
     ctx.beginPath();
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
-    ctx.arc(pos.x + 1, pos.y + 3, 11, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.arc(pos.x + 1, pos.y + 3, 12, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.fillStyle = player.color;
-    ctx.strokeStyle = "#fff8ea";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#1c140c";
+    ctx.lineWidth = 3;
     ctx.arc(pos.x, pos.y, 11, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "#1c140c";
+    ctx.beginPath();
+    ctx.strokeStyle = "#fff8ea";
+    ctx.lineWidth = 1.5;
+    ctx.arc(pos.x, pos.y, 9.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#fff8ea";
     ctx.font = '700 10px "Noto Sans Myanmar"';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText([...player.name][0] ?? "?", pos.x, pos.y + 1);
+    const initial = graphemes(player.name)[0] ?? "?";
+    ctx.fillText(initial, pos.x, pos.y + 1);
   });
 }
 
@@ -513,14 +599,14 @@ async function animateDice() {
   return { d1, d2 };
 }
 
-async function animateTo(player, fromId, toId) {
+async function animateTo(player, fromId, toId, duration) {
   const from = tileCenter(fromId);
   const to = tileCenter(toId);
-  const duration = CONFIG.tokenStepMs;
+  const ms = duration ?? CONFIG.tokenStepMs;
   const start = performance.now();
   return new Promise((resolve) => {
     const tick = (now) => {
-      const t = Math.min(1, (now - start) / duration);
+      const t = Math.min(1, (now - start) / ms);
       const e = easeInOut(t);
       state.anim = {
         ...(state.anim ?? {}),
@@ -540,10 +626,11 @@ async function animateTo(player, fromId, toId) {
 async function walk(player, steps, { collectGo = true } = {}) {
   const dir = steps >= 0 ? 1 : -1;
   const n = Math.abs(steps);
+  const duration = n > 16 ? 70 : n > 8 ? 120 : CONFIG.tokenStepMs;
   for (let i = 0; i < n; i += 1) {
     const from = player.position;
     const to = (from + dir + CONFIG.boardTiles) % CONFIG.boardTiles;
-    await animateTo(player, from, to);
+    await animateTo(player, from, to, duration);
     player.position = to;
     if (collectGo && dir > 0 && to === 0) {
       credit(player, CONFIG.goSalary, { silent: true });
@@ -679,6 +766,7 @@ function setPhase(phase) {
   const player = currentPlayer();
   const canAct = !state.busy && !player?.broke && state.phase !== "over";
   btnRoll.disabled = !(canAct && phase === "roll");
+  btnRoll.hidden = phase !== "roll";
   btnEnd.hidden = !(canAct && phase === "end");
   if (!player) return;
   if (phase === "roll") {
@@ -687,7 +775,7 @@ function setPhase(phase) {
       : `${player.name} အန်စာတုံးလှည့်ပါ`;
     btnRoll.textContent = player.inJail ? "ရွာပြင်က ထွက်မည်" : "အန်စာတုံးလှည့်";
   } else if (phase === "end") {
-    turnLabel.textContent = `${player.name} — မြေတိုးတက်အောင်လုပ် သို့မဟုတ် အလှည့်ပိတ်ပါ`;
+    turnLabel.textContent = `${player.name} · အလှည့်ပိတ်နိုင်သည်`;
   }
 }
 
@@ -939,13 +1027,6 @@ async function resolveTile(player, dice) {
   selectTile(tile.id);
 
   if (tile.type === "go") {
-    await openModal({
-      kicker: tile.nameEn,
-      title: tile.name,
-      accent: "#e0b14a",
-      body: `<p>လစာကွက်။ ဖြတ်သွားရင် ${formatMMK(CONFIG.goSalary)} ရတယ်။</p>`,
-      buttons: [{ label: "ကောင်းပြီ", className: "primary", value: "ok" }],
-    });
     return;
   }
 
@@ -967,12 +1048,7 @@ async function resolveTile(player, dice) {
   }
 
   if (tile.type === "jail") {
-    await openModal({
-      kicker: "Just visiting",
-      title: tile.name,
-      body: `<p>ရွာပြင်ကို ဖြတ်ကြည့်တာပါ။ အထဲရောက်တာ မဟုတ်သေးဘူး။</p>`,
-      buttons: [{ label: "ရှေ့ဆက်", className: "primary", value: "ok" }],
-    });
+    log(`${player.name} ရွာပြင်ကို ဖြတ်ကြည့်တယ်။`);
     return;
   }
 

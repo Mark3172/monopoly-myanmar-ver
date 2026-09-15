@@ -43,6 +43,7 @@ body {
 button,
 input {
   font-family: inherit;
+  touch-action: manipulation;
 }
 
 #app {
@@ -123,6 +124,7 @@ input {
   width: min(100%, calc(100dvh - 8.5rem), 920px);
   aspect-ratio: 1;
   filter: drop-shadow(0 22px 40px rgba(0, 0, 0, 0.45));
+  container-type: size;
 }
 
 #board {
@@ -368,7 +370,7 @@ input {
 }
 
 .inspect-empty {
-  color: var(--muted);
+  color: rgba(246, 237, 216, 0.7);
   font-size: 0.88rem;
 }
 
@@ -693,5 +695,12 @@ input {
   .btn.roll {
     min-width: 0;
     padding: 0.45rem 0.8rem;
+  }
+}
+
+@container (max-width: 620px) {
+  .center-kicker,
+  .center-title {
+    display: none;
   }
 }
