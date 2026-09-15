@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="my">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Gyin-O-Poly — a Yangon-themed 2D board game" />
+    <title>ဂျင်း-O-Poly · Gyin-O-Poly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;600;700&family=Noto+Sans:wght@500;700;800&family=Noto+Serif+Myanmar:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app" hidden>
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">ဂျ</span>
+          <div>
+            <h1>ဂျင်း-O-Poly</h1>
+            <p>Gyin-O-Poly · ရန်ကုန်ဘုတ်ဂိမ်း</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" class="btn ghost" id="btn-rules">ကစားနည်း</button>
+          <button type="button" class="btn ghost" id="btn-new">ဂိမ်းအသစ်</button>
+        </div>
+      </header>
+
+      <main class="playfield">
+        <section class="board-column">
+          <div class="board-wrap" id="board-wrap">
+            <canvas id="board" aria-label="Gyin-O-Poly game board"></canvas>
+            <div class="board-center" id="board-center">
+              <p class="center-kicker">ရန်ကုန် · ၄၀ ကွက်</p>
+              <h2 class="center-title">ဂျင်း-O-Poly</h2>
+              <div class="dice-row" aria-live="polite">
+                <div class="die" id="die-1" data-value="1"></div>
+                <div class="die" id="die-2" data-value="1"></div>
+              </div>
+              <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
+              <button type="button" class="btn primary roll" id="btn-roll">အန်စာတုံးလှည့်</button>
+              <button type="button" class="btn gold" id="btn-end" hidden>အလှည့်ပြီးပြီ</button>
+            </div>
+          </div>
+          <p class="hint" id="board-hint">ကွက်တစ်ခုကို နှိပ်ပြီး အသေးစိတ်ကြည့်ပါ။</p>
+        </section>
+
+        <aside class="hud" id="hud">
+          <section class="panel" id="inspect-panel">
+            <h3>ကွက်အချက်အလက်</h3>
+            <div id="inspect-body" class="inspect-empty">ဘုတ်ပေါ်က ကွက်တစ်ခုကို ရွေးပါ။</div>
+          </section>
+
+          <section class="panel">
+            <h3>ကစားသမားများ</h3>
+            <div id="player-list" class="player-list"></div>
+          </section>
+
+          <section class="panel grow">
+            <h3>မှတ်တမ်း</h3>
+            <ol id="log" class="log"></ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="setup-screen" class="overlay">
+      <div class="setup-card">
+        <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
+        <h1>ဂျင်း-O-Poly</h1>
+        <p class="lede">
+          လမ်းဘေးအစားအစာ၊ မူကတ၊ လက်ဖက်ရည်ဆိုင်နဲ့ Luxury Condo တွေကို ဝယ်၊
+          အန်စာတုံးလှည့်၊ ဂျင်းခံ၊ ၉ ကျော်။ လစာကွက်ကျရင် ၂၀၀,၀၀၀ ကျပ်။
+        </p>
+
+        <fieldset class="count-row">
+          <legend>ကစားသမားအရေအတွက်</legend>
+          <div class="count-pills" id="count-pills">
+            <button type="button" class="pill" data-count="2" aria-pressed="true">၂ ယောက်</button>
+            <button type="button" class="pill" data-count="3" aria-pressed="false">၃ ယောက်</button>
+            <button type="button" class="pill" data-count="4" aria-pressed="false">၄ ယောက်</button>
+          </div>
+        </fieldset>
+
+        <div id="player-setup" class="player-setup"></div>
+
+        <button type="button" class="btn primary wide" id="btn-start">ကစားမည်</button>
+        <p class="setup-foot">Noto Sans Myanmar · ငွေကြေး MMK · ၂–၄ ယောက်</p>
+      </div>
+    </div>
+
+    <div id="modal-root" class="overlay modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-accent" id="modal-accent"></div>
+        <p class="eyebrow" id="modal-kicker"></p>
+        <h2 id="modal-title"></h2>
+        <div id="modal-body" class="modal-body"></div>
+        <div id="modal-actions" class="modal-actions"></div>
+      </div>
+    </div>
+
+    <noscript>
+      <p class="noscript">Gyin-O-Poly needs JavaScript enabled in your browser.</p>
+    </noscript>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>
