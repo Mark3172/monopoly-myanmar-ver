@@ -107,7 +107,7 @@ function minUpgradeInGroup(groupId) {
   return Math.min(...tilesInGroup(groupId).map((t) => state.upgrades[t.id] ?? 0));
 }
 
-function canUpgradeTile(player, tile) {
+function canUpgradeTile(player, tile, { ignoreBusy = false } = {}) {
   if (!player || player.broke || tile.type !== "property") return false;
   if (state.phase !== "roll" && state.phase !== "end") return false;
   if (state.owners[tile.id] !== player.index) return false;
@@ -116,7 +116,7 @@ function canUpgradeTile(player, tile) {
   if (level >= 5) return false;
   if (level > minUpgradeInGroup(tile.group)) return false;
   const cost = GROUPS[tile.group].upgradeCost;
-  return player.money >= cost && !state.busy;
+  return player.money >= cost && (ignoreBusy || !state.busy);
 }
 
 function rentFor(tile, visitor, diceTotal) {
@@ -653,16 +653,18 @@ function credit(player, amount, { silent = false } = {}) {
   if (!silent) updateHUD();
 }
 
-function sellUpgrades(player) {
-  const props = ownedProperties(player)
-    .filter((t) => (state.upgrades[t.id] ?? 0) > 0)
-    .sort((a, b) => (state.upgrades[b.id] ?? 0) - (state.upgrades[a.id] ?? 0));
-  for (const tile of props) {
-    const level = state.upgrades[tile.id] ?? 0;
-    if (!level) continue;
+function sellUpgrades(player, need = Infinity) {
+  let guard = 0;
+  while (player.money < need && guard < 80) {
+    guard += 1;
+    const tile = ownedProperties(player)
+      .filter((t) => (state.upgrades[t.id] ?? 0) > 0)
+      .sort((a, b) => (state.upgrades[b.id] ?? 0) - (state.upgrades[a.id] ?? 0))[0];
+    if (!tile) break;
     const cost = GROUPS[tile.group]?.upgradeCost ?? 0;
-    state.upgrades[tile.id] = level - 1;
+    state.upgrades[tile.id] -= 1;
     player.money += Math.floor(cost / 2);
+    log(`${player.name} ${tile.name} က Wi-Fi/Generator ပြန်ရောင်းတယ်။`);
   }
 }
 
@@ -695,7 +697,7 @@ async function bankrupt(player, creditor) {
 
 async function charge(player, amount, { toPlayer = null, toPot = false, reason = "" } = {}) {
   if (amount <= 0) return true;
-  if (player.money < amount) sellUpgrades(player);
+  if (player.money < amount) sellUpgrades(player, amount);
   if (player.money >= amount) {
     player.money -= amount;
     if (toPlayer) toPlayer.money += amount;
@@ -1119,7 +1121,7 @@ async function resolveTile(player, dice) {
 
     const owner = state.players[ownerIndex];
     if (owner.index === player.index) {
-      const up = canUpgradeTile(player, tile);
+      const up = canUpgradeTile(player, tile, { ignoreBusy: true });
       const choice = await openModal({
         kicker: "ကိုယ်ပိုင်ကွက်",
         title: tile.name,
@@ -1136,11 +1138,11 @@ async function resolveTile(player, dice) {
       return;
     }
 
-    if (owner.broke || owner.inJail) {
+    if (owner.broke) {
       await openModal({
         kicker: "ငှားရမ်းခ မယူ",
         title: tile.name,
-        body: `<p>${owner.name} ရွာပြင်မှာ/ဒေဝါလီဖြစ်နေလို့ ငှားရမ်းခ မပေးရ။</p>`,
+        body: `<p>${owner.name} ဒေဝါလီဖြစ်နေလို့ ငှားရမ်းခ မပေးရ။</p>`,
         buttons: [{ label: "ကံကောင်းတယ်", className: "primary", value: "ok" }],
       });
       return;
@@ -1190,7 +1192,8 @@ async function handleJail(player) {
 
   if (choice === "pass") {
     player.jailPasses -= 1;
-    state.kyawDiscard.unshift(KYAW_DECK.find((c) => c.id === "village-pass"));
+    const pass = KYAW_DECK.find((c) => c.id === "village-pass");
+    if (pass) state.kyawDiscard.unshift(pass);
     player.inJail = false;
     log(`${player.name} လွတ်ကတ်သုံးပြီး ရွာပြင်က ထွက်တယ်။`);
     setPhase("roll");
@@ -1265,17 +1268,15 @@ function nextAlive(from) {
 function finishTurn() {
   if (state.phase === "over") return;
   state.doublesStreak = 0;
-  state.current = nextAlive(state.current);
-  const player = currentPlayer();
-  updateHUD();
-  drawBoard();
-  if (player.skipNext) {
+  for (let n = 0; n < state.players.length; n += 1) {
+    state.current = nextAlive(state.current);
+    const player = currentPlayer();
+    if (!player.skipNext) break;
     player.skipNext = false;
     log(`${player.name} ဒီအလှည့် ကျော်ရတယ်။`);
-    turnLabel.textContent = `${player.name} ပလပ်ကျွတ် — အလှည့်ကျော်`;
-    setTimeout(() => finishTurn(), 650);
-    return;
   }
+  updateHUD();
+  drawBoard();
   setPhase("roll");
 }
 
@@ -1435,6 +1436,22 @@ function bindSetup() {
     const btn = event.target.closest(".swatch-btn");
     if (!btn) return;
     const group = btn.parentElement;
+    const colorId = btn.dataset.color;
+    document.querySelectorAll("#player-setup .swatches").forEach((other) => {
+      if (other === group) return;
+      const pressed = other.querySelector('.swatch-btn[aria-pressed="true"]');
+      if (pressed?.dataset.color !== colorId) return;
+      const taken = new Set(
+        [...document.querySelectorAll("#player-setup .swatch-btn[aria-pressed='true']")]
+          .filter((el) => el !== pressed)
+          .map((el) => el.dataset.color),
+      );
+      taken.add(colorId);
+      const fallback = [...other.querySelectorAll(".swatch-btn")].find((el) => !taken.has(el.dataset.color));
+      other.querySelectorAll(".swatch-btn").forEach((el) => {
+        el.setAttribute("aria-pressed", String(el === fallback));
+      });
+    });
     group.querySelectorAll(".swatch-btn").forEach((el) => el.setAttribute("aria-pressed", String(el === btn)));
   });
 

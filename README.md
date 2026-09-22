@@ -35,6 +35,8 @@ npm run dev
 
 Open [http://127.0.0.1:43180](http://127.0.0.1:43180).
 
+To publish on GitHub Pages: repo **Settings → Pages → Source: GitHub Actions**, then push `main`. The workflow builds with a relative `base` so the game works at `https://<user>.github.io/<repo>/`.
+
 Production build:
 
 ```bash
