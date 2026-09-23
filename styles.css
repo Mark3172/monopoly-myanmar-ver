@@ -102,7 +102,19 @@ input {
 
 .topbar-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.room-chip {
+  font-family: var(--latin);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(224, 177, 74, 0.4);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--gold);
 }
 
 .playfield {
@@ -153,6 +165,11 @@ input {
 }
 
 .center-kicker,
+.center-title {
+  display: none;
+}
+
+.center-kicker,
 .eyebrow {
   margin: 0;
   color: var(--gold);
@@ -174,13 +191,14 @@ input {
 .turn-label {
   margin: 0;
   color: var(--cream);
-  font-size: 0.92rem;
-  max-width: 18rem;
+  font-size: 0.86rem;
+  max-width: 14rem;
 }
 
 .dice-row {
   display: flex;
   gap: 0.7rem;
+  perspective: 240px;
 }
 
 .die {
@@ -199,7 +217,7 @@ input {
 }
 
 .die.rolling {
-  animation: wobble 0.12s linear infinite;
+  animation: dice-spin 0.18s linear infinite;
 }
 
 .die .pip {
@@ -236,10 +254,20 @@ input {
   opacity: 1;
 }
 
-@keyframes wobble {
-  0% { transform: rotate(-8deg) scale(0.96); }
-  50% { transform: rotate(8deg) scale(1.04); }
-  100% { transform: rotate(-8deg) scale(0.96); }
+@keyframes dice-spin {
+  0% { transform: rotateX(0deg) rotateY(0deg) scale(0.96); }
+  50% { transform: rotateX(180deg) rotateY(90deg) scale(1.06); }
+  100% { transform: rotateX(360deg) rotateY(180deg) scale(0.96); }
+}
+
+.die.settle {
+  animation: dice-settle 0.38s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes dice-settle {
+  0% { transform: scale(1.22) rotate(-10deg); }
+  55% { transform: scale(0.94) rotate(4deg); }
+  100% { transform: none; }
 }
 
 .hint {
@@ -462,7 +490,7 @@ input {
 }
 
 .btn.roll {
-  min-width: 10.5rem;
+  min-width: 6.5rem;
 }
 
 .overlay {
@@ -594,6 +622,69 @@ input {
   font-size: 0.78rem;
 }
 
+#mode-pills {
+  margin-bottom: 1rem;
+}
+
+.code-field {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.7rem 0;
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+
+.code-field input {
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 1.2rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-family: var(--latin);
+  font-weight: 800;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.lobby-status {
+  margin: 0.4rem 0;
+  color: #f3d37a;
+  font-family: var(--latin);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.lobby-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.8rem;
+}
+
+.lobby-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.online-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.money.flash {
+  animation: money-pop 0.45s ease;
+}
+
+@keyframes money-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); color: #fff; }
+  100% { transform: scale(1); }
+}
+
 .modal-overlay {
   z-index: 30;
 }
@@ -601,6 +692,12 @@ input {
 .modal {
   position: relative;
   overflow: hidden;
+  animation: modal-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes modal-in {
+  from { transform: translateY(12px) scale(0.94); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 
 .modal-accent {

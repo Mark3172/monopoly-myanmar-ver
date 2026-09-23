@@ -25,6 +25,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <div id="room-chip" class="room-chip" hidden></div>
           <button type="button" class="btn ghost" id="btn-rules">ကစားနည်း</button>
           <button type="button" class="btn ghost" id="btn-new">ဂိမ်းအသစ်</button>
         </div>
@@ -35,18 +36,16 @@
           <div class="board-wrap" id="board-wrap">
             <canvas id="board" aria-label="Gyin-O-Poly game board"></canvas>
             <div class="board-center" id="board-center">
-              <p class="center-kicker">ရန်ကုန် · ၄၀ ကွက်</p>
-              <h2 class="center-title">ဂျင်း-O-Poly</h2>
               <div class="dice-row" aria-live="polite">
                 <div class="die" id="die-1" data-value="1"></div>
                 <div class="die" id="die-2" data-value="1"></div>
               </div>
               <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
-              <button type="button" class="btn primary roll" id="btn-roll">အန်စာတုံးလှည့်</button>
-              <button type="button" class="btn gold" id="btn-end" hidden>အလှည့်ပြီးပြီ</button>
+              <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
+              <button type="button" class="btn gold" id="btn-end" hidden>ပြီးပြီ</button>
             </div>
           </div>
-          <p class="hint" id="board-hint">ကွက်တစ်ခုကို နှိပ်ပြီး အသေးစိတ်ကြည့်ပါ။</p>
+          <p class="hint" id="board-hint">ကွက်ကို နှိပ် — အမည်အပြည့်အစုံက ညာဘက်မှာ။</p>
         </section>
 
         <aside class="hud" id="hud">
@@ -73,23 +72,42 @@
         <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
         <h1>ဂျင်း-O-Poly</h1>
         <p class="lede">
-          လမ်းဘေးအစားအစာ၊ မူကတ၊ လက်ဖက်ရည်ဆိုင်နဲ့ Luxury Condo တွေကို ဝယ်၊
-          အန်စာတုံးလှည့်၊ ဂျင်းခံ၊ ၉ ကျော်။ လစာကွက်ကျရင် ၂၀၀,၀၀၀ ကျပ်။
+          ၂–၄ ယောက်။ တစ်စက်မှာပဲ ကစား၊ သို့မဟုတ် အခန်းကုဒ်နဲ့ သူများ ဝင်လာနိုင်တယ်။
         </p>
 
-        <fieldset class="count-row">
-          <legend>ကစားသမားအရေအတွက်</legend>
-          <div class="count-pills" id="count-pills">
-            <button type="button" class="pill" data-count="2" aria-pressed="true">၂ ယောက်</button>
-            <button type="button" class="pill" data-count="3" aria-pressed="false">၃ ယောက်</button>
-            <button type="button" class="pill" data-count="4" aria-pressed="false">၄ ယောက်</button>
+        <div class="count-pills" id="mode-pills">
+          <button type="button" class="pill" data-mode="local" aria-pressed="true">ဒီစက်</button>
+          <button type="button" class="pill" data-mode="host" aria-pressed="false">အခန်းဖွင့်</button>
+          <button type="button" class="pill" data-mode="join" aria-pressed="false">ဝင်မည်</button>
+        </div>
+
+        <section id="local-setup">
+          <fieldset class="count-row">
+            <legend>ကစားသမား</legend>
+            <div class="count-pills" id="count-pills">
+              <button type="button" class="pill" data-count="2" aria-pressed="true">၂</button>
+              <button type="button" class="pill" data-count="3" aria-pressed="false">၃</button>
+              <button type="button" class="pill" data-count="4" aria-pressed="false">၄</button>
+            </div>
+          </fieldset>
+          <div id="player-setup" class="player-setup"></div>
+          <button type="button" class="btn primary wide" id="btn-start">ကစားမည်</button>
+        </section>
+
+        <section id="online-setup" hidden>
+          <div id="self-setup" class="player-setup"></div>
+          <label id="join-code-wrap" class="code-field" hidden>
+            အခန်းကုဒ်
+            <input id="join-code" type="text" maxlength="6" placeholder="7K3P" autocomplete="off" />
+          </label>
+          <p id="lobby-status" class="lobby-status" hidden></p>
+          <div id="lobby-list" class="lobby-list" hidden></div>
+          <div class="online-actions">
+            <button type="button" class="btn primary wide" id="btn-online">ဆက်မည်</button>
+            <button type="button" class="btn gold wide" id="btn-host-start" hidden>စတင်မည်</button>
           </div>
-        </fieldset>
-
-        <div id="player-setup" class="player-setup"></div>
-
-        <button type="button" class="btn primary wide" id="btn-start">ကစားမည်</button>
-        <p class="setup-foot">Noto Sans Myanmar · ငွေကြေး MMK · ၂–၄ ယောက်</p>
+        </section>
+        <p class="setup-foot">Online rooms need this dev server. Share the page URL plus the 4-letter code.</p>
       </div>
     </div>
 

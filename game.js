@@ -7,6 +7,7 @@ import {
   PLAYER_PALETTE,
   TILES,
 } from "./boardData.js";
+import { connect, isMyTurn, net, on, resetNet, send } from "./net.js";
 
 const canvas = document.getElementById("board");
 const wrap = document.getElementById("board-wrap");
@@ -43,10 +44,18 @@ const state = {
   layout: null,
   anim: null,
   log: [],
+  landFlash: null,
+  flashUntil: 0,
 };
 
 let modalResolver = null;
 let setupCount = 2;
+const lastMoney = new Map();
+let netQueue = Promise.resolve();
+
+function enqueueNet(fn) {
+  netQueue = netQueue.then(fn).catch(() => {});
+}
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -274,7 +283,8 @@ function tileCenter(id) {
 }
 
 function tokenDrawPos(player, indexOnTile) {
-  const base = state.anim?.[player.index] ?? tileCenter(player.position);
+  const anim = state.anim?.[player.index];
+  const base = anim ?? tileCenter(player.position);
   const offsets = [
     [-10, -10],
     [10, -10],
@@ -282,7 +292,12 @@ function tokenDrawPos(player, indexOnTile) {
     [10, 10],
   ];
   const [dx, dy] = offsets[indexOnTile % 4];
-  return { x: base.x + dx, y: base.y + dy };
+  return {
+    x: base.x + dx,
+    y: base.y + dy,
+    scale: anim?.scale ?? 1,
+    hop: anim?.hop ?? 0,
+  };
 }
 
 function resizeCanvas() {
@@ -367,15 +382,20 @@ function drawTile(tile, rect) {
   ctx.restore();
 
   ctx.save();
-  ctx.strokeStyle = isSelected ? "#f4d06a" : isHere ? "#2ea572" : isHover ? "#d7a84a" : "rgba(40,24,10,0.45)";
-  ctx.lineWidth = isSelected || isHere ? 2.4 : 1;
+  const flashing = state.landFlash === tile.id && performance.now() < state.flashUntil;
+  ctx.strokeStyle = flashing ? "#fff3b0" : isSelected ? "#f4d06a" : isHere ? "#2ea572" : isHover ? "#d7a84a" : "rgba(40,24,10,0.45)";
+  ctx.lineWidth = flashing || isSelected || isHere ? 3 : 1;
   roundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 4);
   ctx.stroke();
   ctx.restore();
 }
 
-function labelText(tile) {
-  return tile.short || tile.name;
+function boardMark(tile) {
+  if (tile.type === "gyin") return "ဂျင်း";
+  if (tile.type === "kyaw") return "၉";
+  if (tile.type === "transit" || tile.type === "utility") return tile.short || tile.name;
+  if (tile.type === "tax") return tile.short || "ခွန်";
+  return "";
 }
 
 function drawFittedLines(text, maxWidth, maxHeight, color, family = '"Noto Sans Myanmar", "Noto Sans"') {
@@ -417,65 +437,51 @@ function drawFittedLines(text, maxWidth, maxHeight, color, family = '"Noto Sans 
 function drawTileLabel(tile, rect) {
   const isCorner = ["br", "bl", "tl", "tr"].includes(rect.side);
   const color = ["gyin", "kyaw"].includes(tile.type) ? "#f6edd8" : "#1c140c";
-  const bar = tile.type === "property" ? barRect(rect) : null;
 
   if (isCorner) {
-    ctx.fillStyle = color;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
     ctx.save();
-    ctx.translate(rect.x + rect.w / 2, rect.y + rect.h * 0.42);
-    drawFittedLines(tile.name, rect.w - 14, rect.h * 0.46, color);
+    ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+    drawFittedLines(tile.short || tile.name, rect.w - 16, rect.h * 0.42, color);
     ctx.restore();
-    ctx.font = `600 ${Math.max(8, rect.w * 0.075)}px "Noto Sans"`;
-    ctx.fillStyle = "rgba(28,20,12,0.72)";
-    ctx.fillText(tile.nameEn, rect.x + rect.w / 2, rect.y + rect.h * 0.78);
     return;
   }
 
+  const mark = boardMark(tile);
   const along = rect.side === "bottom" || rect.side === "top" ? rect.w : rect.h;
   const depth = rect.side === "bottom" || rect.side === "top" ? rect.h : rect.w;
-  const barT = bar ? (rect.side === "bottom" || rect.side === "top" ? bar.h : bar.w) : 0;
-  const priceBand = tile.price || tile.amount ? Math.max(11, depth * 0.16) : 0;
-  const nameMaxW = along - 8;
-  const nameMaxH = Math.max(16, depth - barT - priceBand - 8);
+  const price = tile.price || tile.amount;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-
   if (rect.side === "left") {
-    ctx.translate(rect.x + (depth - barT) / 2, rect.y + rect.h / 2);
+    ctx.translate(rect.x + depth / 2, rect.y + rect.h / 2);
     ctx.rotate(-Math.PI / 2);
   } else if (rect.side === "right") {
-    ctx.translate(rect.x + barT + (depth - barT) / 2, rect.y + rect.h / 2);
+    ctx.translate(rect.x + depth / 2, rect.y + rect.h / 2);
     ctx.rotate(Math.PI / 2);
-  } else if (rect.side === "bottom") {
-    ctx.translate(rect.x + rect.w / 2, rect.y + barT + nameMaxH / 2 + 1);
   } else {
-    ctx.translate(rect.x + rect.w / 2, rect.y + priceBand + nameMaxH / 2);
+    ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
   }
-
-  drawFittedLines(labelText(tile), nameMaxW, nameMaxH, color);
+  if (mark) drawFittedLines(mark, along - 8, Math.min(18, depth * 0.28), color);
   ctx.restore();
 
-  const price = tile.price || tile.amount;
   if (!price) return;
   const label = formatMMK(price).replace(" Ks", "");
   ctx.save();
   ctx.fillStyle = "#5c4630";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `700 ${Math.max(7.5, Math.min(10, along * 0.16))}px "Noto Sans"`;
-  if (rect.side === "bottom") ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h - priceBand / 2);
-  if (rect.side === "top") ctx.fillText(label, rect.x + rect.w / 2, rect.y + priceBand / 2);
+  ctx.font = `700 ${Math.max(7, Math.min(9, along * 0.15))}px "Noto Sans"`;
+  if (rect.side === "bottom") ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h - 8);
+  if (rect.side === "top") ctx.fillText(label, rect.x + rect.w / 2, rect.y + 8);
   if (rect.side === "left") {
-    ctx.translate(rect.x + priceBand / 2, rect.y + rect.h / 2);
+    ctx.translate(rect.x + 8, rect.y + rect.h / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText(label, 0, 0);
   }
   if (rect.side === "right") {
-    ctx.translate(rect.x + rect.w - priceBand / 2, rect.y + rect.h / 2);
+    ctx.translate(rect.x + rect.w - 8, rect.y + rect.h / 2);
     ctx.rotate(Math.PI / 2);
     ctx.fillText(label, 0, 0);
   }
@@ -538,28 +544,31 @@ function drawTokens() {
     const mates = state.players.filter((p) => !p.broke && p.position === player.position);
     const idx = mates.indexOf(player);
     const pos = tokenDrawPos(player, idx);
+    const r = 11 * pos.scale;
+    ctx.save();
     ctx.beginPath();
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.arc(pos.x + 1, pos.y + 3, 12, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,0,0,${0.22 + pos.hop * 0.012})`;
+    ctx.ellipse(pos.x + 1, pos.y + 4 + pos.hop * 0.35, r * 0.95, r * 0.38, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.fillStyle = player.color;
     ctx.strokeStyle = "#1c140c";
     ctx.lineWidth = 3;
-    ctx.arc(pos.x, pos.y, 11, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
     ctx.strokeStyle = "#fff8ea";
     ctx.lineWidth = 1.5;
-    ctx.arc(pos.x, pos.y, 9.2, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, r * 0.84, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = "#fff8ea";
-    ctx.font = '700 10px "Noto Sans Myanmar"';
+    ctx.font = `700 ${Math.round(10 * pos.scale)}px "Noto Sans Myanmar"`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const initial = graphemes(player.name)[0] ?? "?";
     ctx.fillText(initial, pos.x, pos.y + 1);
+    ctx.restore();
   });
 }
 
@@ -585,17 +594,22 @@ function paintDice(d1, d2) {
   dieEls[1].dataset.value = String(d2);
 }
 
-async function animateDice() {
+async function animateDice(forced) {
   dieEls.forEach((el) => el.classList.add("rolling"));
-  const end = performance.now() + 620;
+  const end = performance.now() + (forced ? 480 : 780);
   while (performance.now() < end) {
     paintDice(1 + randInt(6), 1 + randInt(6));
-    await wait(70);
+    await wait(60);
   }
-  const d1 = 1 + randInt(6);
-  const d2 = 1 + randInt(6);
+  const d1 = forced?.d1 ?? 1 + randInt(6);
+  const d2 = forced?.d2 ?? 1 + randInt(6);
   paintDice(d1, d2);
-  dieEls.forEach((el) => el.classList.remove("rolling"));
+  dieEls.forEach((el) => {
+    el.classList.remove("rolling");
+    el.classList.remove("settle");
+    void el.offsetWidth;
+    el.classList.add("settle");
+  });
   return { d1, d2 };
 }
 
@@ -608,15 +622,29 @@ async function animateTo(player, fromId, toId, duration) {
     const tick = (now) => {
       const t = Math.min(1, (now - start) / ms);
       const e = easeInOut(t);
+      const hop = Math.sin(Math.PI * t) * Math.min(22, 14 + ms * 0.04);
       state.anim = {
         ...(state.anim ?? {}),
-        [player.index]: { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e },
+        [player.index]: {
+          x: from.x + (to.x - from.x) * e,
+          y: from.y + (to.y - from.y) * e - hop,
+          hop,
+          scale: 1 + Math.sin(Math.PI * t) * 0.2,
+        },
       };
       drawBoard();
       if (t < 1) requestAnimationFrame(tick);
       else {
-        if (state.anim) delete state.anim[player.index];
-        resolve();
+        state.anim = {
+          ...(state.anim ?? {}),
+          [player.index]: { x: to.x, y: to.y, hop: 0, scale: 0.88 },
+        };
+        drawBoard();
+        requestAnimationFrame(() => {
+          if (state.anim) delete state.anim[player.index];
+          drawBoard();
+          resolve();
+        });
       }
     };
     requestAnimationFrame(tick);
@@ -626,12 +654,16 @@ async function animateTo(player, fromId, toId, duration) {
 async function walk(player, steps, { collectGo = true } = {}) {
   const dir = steps >= 0 ? 1 : -1;
   const n = Math.abs(steps);
-  const duration = n > 16 ? 70 : n > 8 ? 120 : CONFIG.tokenStepMs;
+  const duration = n > 16 ? 80 : n > 8 ? 140 : CONFIG.tokenStepMs;
+  if (net.online && isMyTurn(player) && n) {
+    send({ type: "walk", index: player.index, from: player.position, steps, duration });
+  }
   for (let i = 0; i < n; i += 1) {
     const from = player.position;
     const to = (from + dir + CONFIG.boardTiles) % CONFIG.boardTiles;
     await animateTo(player, from, to, duration);
     player.position = to;
+    pulseTile(to);
     if (collectGo && dir > 0 && to === 0) {
       credit(player, CONFIG.goSalary, { silent: true });
       log(`${player.name} လစာရပြီ — ${formatMMK(CONFIG.goSalary)}`);
@@ -648,9 +680,81 @@ async function advanceTo(player, tileId, { collectGo = true } = {}) {
   await walk(player, steps, { collectGo });
 }
 
+function pulseTile(id) {
+  state.landFlash = id;
+  state.flashUntil = performance.now() + 520;
+  drawBoard();
+}
+
 function credit(player, amount, { silent = false } = {}) {
   player.money += amount;
   if (!silent) updateHUD();
+}
+
+function cardsById(list) {
+  const all = [...GYIN_DECK, ...KYAW_DECK];
+  return list.map((id) => all.find((c) => c.id === id)).filter(Boolean);
+}
+
+function getSnapshot() {
+  return {
+    players: state.players,
+    owners: state.owners,
+    upgrades: state.upgrades,
+    pot: state.pot,
+    gyin: state.gyin.map((c) => c.id),
+    kyaw: state.kyaw.map((c) => c.id),
+    gyinDiscard: state.gyinDiscard.map((c) => c.id),
+    kyawDiscard: state.kyawDiscard.map((c) => c.id),
+    current: state.current,
+    phase: state.phase,
+    lastDice: state.lastDice,
+    doublesStreak: state.doublesStreak,
+    log: state.log,
+    selected: state.selected,
+  };
+}
+
+function applySnapshot(snap) {
+  if (!snap) return;
+  state.players = snap.players;
+  state.owners = snap.owners;
+  state.upgrades = snap.upgrades;
+  state.pot = snap.pot;
+  state.gyin = cardsById(snap.gyin);
+  state.kyaw = cardsById(snap.kyaw);
+  state.gyinDiscard = cardsById(snap.gyinDiscard);
+  state.kyawDiscard = cardsById(snap.kyawDiscard);
+  state.current = snap.current;
+  state.phase = snap.phase;
+  state.lastDice = snap.lastDice;
+  state.doublesStreak = snap.doublesStreak;
+  state.log = snap.log ?? [];
+  state.selected = snap.selected ?? state.selected;
+  logEl.innerHTML = state.log.map((line) => `<li>${line}</li>`).join("");
+  paintDice(state.lastDice.d1, state.lastDice.d2);
+}
+
+function publish(extra = {}, { force = false } = {}) {
+  if (!net.online) return;
+  if (!force && !isMyTurn(currentPlayer())) return;
+  send({ type: "sync", snapshot: getSnapshot(), extra });
+}
+
+async function replayWalk({ index, from, steps, duration }) {
+  const player = state.players[index];
+  if (!player) return;
+  player.position = from;
+  const dir = steps >= 0 ? 1 : -1;
+  const n = Math.abs(steps);
+  const ms = duration ?? 160;
+  for (let i = 0; i < n; i += 1) {
+    const a = player.position;
+    const b = (a + dir + CONFIG.boardTiles) % CONFIG.boardTiles;
+    await animateTo(player, a, b, ms);
+    player.position = b;
+    pulseTile(b);
+  }
 }
 
 function sellUpgrades(player, need = Infinity) {
@@ -766,18 +870,21 @@ async function endGame(winner) {
 function setPhase(phase) {
   state.phase = phase;
   const player = currentPlayer();
-  const canAct = !state.busy && !player?.broke && state.phase !== "over";
+  const mine = !net.online || isMyTurn(player);
+  const canAct = !state.busy && !player?.broke && state.phase !== "over" && mine;
   btnRoll.disabled = !(canAct && phase === "roll");
   btnRoll.hidden = phase !== "roll";
   btnEnd.hidden = !(canAct && phase === "end");
   if (!player) return;
   if (phase === "roll") {
-    turnLabel.textContent = player.inJail
-      ? `${player.name} ရွာပြင်မှာ — ထွက်မလား?`
-      : `${player.name} အန်စာတုံးလှည့်ပါ`;
-    btnRoll.textContent = player.inJail ? "ရွာပြင်က ထွက်မည်" : "အန်စာတုံးလှည့်";
+    turnLabel.textContent = !mine
+      ? `${player.name} အလှည့်`
+      : player.inJail
+        ? "ရွာပြင် — ထွက်မလား?"
+        : "သင့်အလှည့်";
+    btnRoll.textContent = player.inJail ? "ထွက်မည်" : "လှည့်";
   } else if (phase === "end") {
-    turnLabel.textContent = `${player.name} · အလှည့်ပိတ်နိုင်သည်`;
+    turnLabel.textContent = mine ? "ပြီးအောင်" : `${player.name}`;
   }
 }
 
@@ -791,7 +898,7 @@ function updateHUD() {
           const color = t.group ? groupColor(t.group) : "#888";
           const up = state.upgrades[t.id] ?? 0;
           const mark = up >= 5 ? " ⚡" : up ? ` ${"▂".repeat(up)}` : "";
-          return `<button type="button" data-tile="${t.id}" style="background:${color};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${t.nameEn}${mark}</button>`;
+          return `<button type="button" data-tile="${t.id}" title="${t.name}" style="background:${color};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${t.short || t.nameEn}${mark}</button>`;
         })
         .join("");
       const flags = [
@@ -802,7 +909,7 @@ function updateHUD() {
       ]
         .filter(Boolean)
         .join(" · ");
-      return `<article class="player-card ${p.index === state.current ? "active" : ""} ${p.broke ? "broke" : ""}">
+      return `<article class="player-card ${p.index === state.current ? "active" : ""} ${p.broke ? "broke" : ""}" data-player="${p.index}">
         <span class="token-dot" style="--token:${p.color};background:${p.color}"></span>
         <div>
           <h4>${p.name}</h4>
@@ -816,6 +923,16 @@ function updateHUD() {
 
   playerList.querySelectorAll("button[data-tile]").forEach((btn) => {
     btn.addEventListener("click", () => selectTile(Number(btn.dataset.tile)));
+  });
+  state.players.forEach((p) => {
+    const moneyEl = playerList.querySelector(`[data-player="${p.index}"] .money`);
+    const prev = lastMoney.get(p.index);
+    if (moneyEl && prev != null && prev !== p.money) {
+      moneyEl.classList.remove("flash");
+      void moneyEl.offsetWidth;
+      moneyEl.classList.add("flash");
+    }
+    lastMoney.set(p.index, p.money);
   });
 
   if (state.selected != null) renderInspect(state.selected);
@@ -888,6 +1005,7 @@ function upgradeTile(tile) {
   );
   updateHUD();
   drawBoard();
+  publish();
 }
 
 function refill(kind) {
@@ -1278,11 +1396,13 @@ function finishTurn() {
   updateHUD();
   drawBoard();
   setPhase("roll");
+  publish();
 }
 
 async function playRoll() {
   const player = currentPlayer();
   if (!player || state.busy || state.phase !== "roll" || player.broke) return;
+  if (net.online && !isMyTurn(player)) return;
   state.busy = true;
   btnRoll.disabled = true;
   try {
@@ -1292,6 +1412,7 @@ async function playRoll() {
     }
     const dice = await animateDice();
     state.lastDice = dice;
+    if (net.online) send({ type: "dice", d1: dice.d1, d2: dice.d2 });
     if (dice.d1 === dice.d2 && state.doublesStreak + 1 >= 3) {
       log(`${player.name} ဒိုင်ဗယ် သုံးကြိမ်ဆက် — ရွာပြင်ပို့ခံရ။`);
       await sendToJail(player);
@@ -1307,6 +1428,7 @@ async function playRoll() {
     if (state.phase === "end") setPhase("end");
     updateHUD();
     drawBoard();
+    publish();
   }
 }
 
@@ -1323,6 +1445,7 @@ function createPlayers(entries) {
     jailPasses: 0,
     skipNext: false,
     broke: false,
+    netId: entry.netId ?? null,
   }));
 }
 
@@ -1358,6 +1481,11 @@ function startGame(entries) {
     selectTile(0);
   });
   setPhase("roll");
+  const chip = document.getElementById("room-chip");
+  if (chip && net.online && net.code) {
+    chip.hidden = false;
+    chip.textContent = net.code;
+  }
 }
 
 function showSetup() {
@@ -1365,7 +1493,11 @@ function showSetup() {
   app.hidden = true;
   setupScreen.hidden = false;
   modalRoot.hidden = true;
+  resetNet();
+  const chip = document.getElementById("room-chip");
+  if (chip) chip.hidden = true;
   renderSetupRows();
+  renderSelfSetup();
 }
 
 function renderSetupRows() {
@@ -1421,7 +1553,199 @@ function collectSetup() {
   }));
 }
 
+let playMode = "local";
+let lobbyPlayers = [];
+
+function renderSelfSetup() {
+  const box = document.getElementById("self-setup");
+  if (!box) return;
+  const palette = PLAYER_PALETTE[0];
+  box.innerHTML = `<div class="player-row">
+    <div class="swatches" data-index="self"></div>
+    <div>
+      <label>သင့်နာမည်
+        <input type="text" maxlength="18" value="${DEFAULT_NAMES[0]}" id="self-name" />
+      </label>
+    </div>
+  </div>`;
+  const swatches = box.querySelector(".swatches");
+  PLAYER_PALETTE.forEach((color, ci) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatch-btn";
+    btn.style.background = color.hex;
+    btn.dataset.color = color.id;
+    btn.setAttribute("aria-pressed", String(ci === 0));
+    swatches.appendChild(btn);
+  });
+}
+
+function readSelf() {
+  const name = document.getElementById("self-name")?.value.trim() || DEFAULT_NAMES[0];
+  const id = document.querySelector("#self-setup .swatch-btn[aria-pressed='true']")?.dataset.color;
+  const color = PLAYER_PALETTE.find((c) => c.id === id) ?? PLAYER_PALETTE[0];
+  return { name, color: color.hex, colorLabel: color.label };
+}
+
+function renderLobby(players) {
+  lobbyPlayers = players;
+  const list = document.getElementById("lobby-list");
+  const status = document.getElementById("lobby-status");
+  list.hidden = false;
+  status.hidden = false;
+  status.textContent = net.code ? `ROOM ${net.code}` : "";
+  list.innerHTML = players
+    .map(
+      (p) => `<div class="lobby-row">
+      <span class="token-dot" style="--token:${p.color};background:${p.color}"></span>
+      <span>${p.name}${p.host ? " · host" : ""}</span>
+    </div>`,
+    )
+    .join("");
+  const chip = document.getElementById("room-chip");
+  if (chip && net.code) {
+    chip.hidden = false;
+    chip.textContent = net.code;
+  }
+}
+
+function setPlayMode(mode) {
+  playMode = mode;
+  document.querySelectorAll("#mode-pills .pill").forEach((el) => {
+    el.setAttribute("aria-pressed", String(el.dataset.mode === mode));
+  });
+  document.getElementById("local-setup").hidden = mode !== "local";
+  document.getElementById("online-setup").hidden = mode === "local";
+  document.getElementById("join-code-wrap").hidden = mode !== "join";
+  document.getElementById("btn-online").hidden = false;
+  document.getElementById("btn-online").textContent = mode === "join" ? "အခန်းဝင်" : "အခန်းဖွင့်";
+  document.getElementById("btn-host-start").hidden = true;
+  document.getElementById("lobby-list").hidden = true;
+  document.getElementById("lobby-status").hidden = true;
+}
+
+function uniquifyLobby(players) {
+  const used = new Set();
+  return players.map((p, i) => {
+    let swatch = PLAYER_PALETTE.find((c) => c.hex === p.color && !used.has(c.hex));
+    if (!swatch) swatch = PLAYER_PALETTE.find((c) => !used.has(c.hex)) ?? PLAYER_PALETTE[i % PLAYER_PALETTE.length];
+    used.add(swatch.hex);
+    return { ...p, color: swatch.hex, colorLabel: swatch.label };
+  });
+}
+
+function beginOnlineGame(players) {
+  startGame(
+    uniquifyLobby(players).map((p) => ({
+      name: p.name,
+      color: p.color,
+      colorLabel: p.colorLabel,
+      netId: p.id,
+    })),
+  );
+  if (net.isHost) {
+    queueMicrotask(() => publish({}, { force: true }));
+  }
+}
+
+function bindNet() {
+  on("created", (msg) => {
+    net.online = true;
+    net.isHost = true;
+    net.code = msg.code;
+    net.youId = msg.you;
+    renderLobby(msg.players);
+    document.getElementById("btn-online").hidden = true;
+    document.getElementById("btn-host-start").hidden = false;
+  });
+  on("joined", (msg) => {
+    net.online = true;
+    net.isHost = false;
+    net.code = msg.code;
+    net.youId = msg.you;
+    renderLobby(msg.players);
+    document.getElementById("btn-online").hidden = true;
+    document.getElementById("lobby-status").textContent = `ROOM ${msg.code} · host will start`;
+  });
+  on("lobby", (msg) => renderLobby(msg.players));
+  on("started", (msg) => beginOnlineGame(msg.players));
+  on("error", (msg) => {
+    document.getElementById("lobby-status").hidden = false;
+    document.getElementById("lobby-status").textContent = msg.message;
+  });
+  on("dice", (msg) => {
+    enqueueNet(async () => {
+      if (isMyTurn(currentPlayer())) return;
+      await animateDice({ d1: msg.d1, d2: msg.d2 });
+    });
+  });
+  on("walk", (msg) => {
+    enqueueNet(async () => {
+      if (isMyTurn(currentPlayer())) return;
+      state.busy = true;
+      await replayWalk(msg);
+      state.busy = false;
+      drawBoard();
+      updateHUD();
+    });
+  });
+  on("sync", (msg) => {
+    enqueueNet(async () => {
+      if (isMyTurn(currentPlayer()) && state.phase !== "setup") return;
+      applySnapshot(msg.snapshot);
+      updateHUD();
+      setPhase(state.phase);
+      drawBoard();
+      if (app.hidden) {
+        setupScreen.hidden = true;
+        app.hidden = false;
+        requestAnimationFrame(() => resizeCanvas());
+      }
+    });
+  });
+  on("peer-left", (msg) => log(`${msg.name} ထွက်သွားတယ်။`));
+  on("closed", () => {
+    if (state.phase !== "setup") log("ချိတ်ဆက်မှု ပြတ်သွားတယ်။");
+  });
+}
+
 function bindSetup() {
+  document.getElementById("mode-pills").addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-mode]");
+    if (!btn) return;
+    setPlayMode(btn.dataset.mode);
+  });
+
+  document.getElementById("self-setup").addEventListener("click", (event) => {
+    const btn = event.target.closest(".swatch-btn");
+    if (!btn) return;
+    btn.parentElement.querySelectorAll(".swatch-btn").forEach((el) => {
+      el.setAttribute("aria-pressed", String(el === btn));
+    });
+  });
+
+  document.getElementById("btn-online").addEventListener("click", async () => {
+    const self = readSelf();
+    const status = document.getElementById("lobby-status");
+    status.hidden = false;
+    status.textContent = "ချိတ်ဆက်နေသည်…";
+    try {
+      await connect();
+    } catch (err) {
+      status.textContent = err.message;
+      return;
+    }
+    if (playMode === "join") {
+      send({ type: "join", code: document.getElementById("join-code").value, ...self });
+    } else {
+      send({ type: "create", ...self });
+    }
+  });
+
+  document.getElementById("btn-host-start").addEventListener("click", () => {
+    send({ type: "start" });
+  });
+
   document.getElementById("count-pills").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-count]");
     if (!btn) return;
@@ -1487,7 +1811,7 @@ function bindGame() {
       kicker: "How to play",
       title: "ကစားနည်း",
       body: `<div class="rules">
-        <p>၂–၄ ယောက် အန်စာတုံးလှည့်ပြီး ရန်ကုန်ဘုတ်ပေါ် လှည့်ကစားကြတယ်။ လစာကွက် <strong>လစာဝင်ပြီ</strong> ကို ဖြတ်ရင် ${formatMMK(CONFIG.goSalary)} ရတယ်။</p>
+        <p>ဒီစက်မှာ ၂–၄ ယောက်၊ သို့မဟုတ် <strong>အခန်းဖွင့်</strong>ပြီး ကုဒ်ဝေ။ လစာကွက်ကျရင် ${formatMMK(CONFIG.goSalary)}။</p>
         <h3>မြေနှင့် ငှားရမ်းခ</h3>
         <p>ပိုင်ရှင်မရှိသော ကွက်ကို ဝယ်။ သူများကွက်ပေါ်ကျရင် ငှားရမ်းခပေး။ အရောင်အစုံပိုင်ရင် Wi-Fi Router (၄ လုံး) နဲ့ Generator တပ်ပြီး ငှားရမ်းခတက်တယ်။</p>
         <h3>ယာဉ်နှင့် ဘေလ်</h3>
@@ -1543,9 +1867,12 @@ async function boot() {
       }
     }
   });
+  bindNet();
   bindSetup();
   bindGame();
   renderSetupRows();
+  renderSelfSetup();
+  setPlayMode("local");
   try {
     await document.fonts.ready;
   } catch {

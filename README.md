@@ -20,6 +20,8 @@ No accounts, no backend, no build step required beyond Vite.
 | `index.html` | Shell, setup screen, HUD, modals |
 | `styles.css` | Teak / jade / gold theme and responsive layout |
 | `game.js` | Turns, dice, animation, rent, cards, UI |
+| `net.js` | Room client |
+| `server/lobbyPlugin.js` | WebSocket lobby on the Vite server |
 | `boardData.js` | All tile names, prices, rents, and both card decks |
 
 Rebalance the game by editing `boardData.js` only: `CONFIG`, `TILES`, `GROUPS`, `GYIN_DECK`, and `KYAW_DECK`.
@@ -34,6 +36,16 @@ npm run dev
 ```
 
 Open [http://127.0.0.1:43180](http://127.0.0.1:43180).
+
+### Play with others
+
+`npm run dev` starts the board **and** a live lobby (`/ws`).
+
+1. One person opens **အခန်းဖွင့်**, picks a name/colour, and shares the **4-letter room code**.
+2. Friends open the **same server URL** (this machine, or `http://<lan-ip>:43180` on the same Wi-Fi).
+3. They choose **ဝင်မည်**, enter the code, and wait. Host clicks **စတင်မည်** at 2–4 players.
+
+GitHub Pages is display-only (no lobby server). Use This device for hot-seat, or `npm run dev` / `npm run preview` for joinable rooms.
 
 To publish on GitHub Pages: repo **Settings → Pages → Source: GitHub Actions**, then push `main`. The workflow builds with a relative `base` so the game works at `https://<user>.github.io/<repo>/`.
 

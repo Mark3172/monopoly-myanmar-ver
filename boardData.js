@@ -12,7 +12,7 @@ export const CONFIG = {
   jailMaxTurns: 3,
   incomeTax: 200_000,
   luxuryTax: 100_000,
-  tokenStepMs: 220,
+  tokenStepMs: 280,
   boardTiles: 40,
 };
 
