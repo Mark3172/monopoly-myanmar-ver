@@ -1594,7 +1594,7 @@ function renderLobby(players) {
   const status = document.getElementById("lobby-status");
   list.hidden = false;
   status.hidden = false;
-  status.textContent = net.code ? `ROOM ${net.code}` : "";
+  status.textContent = net.code ? `အခန်း ${net.code}` : "";
   list.innerHTML = players
     .map(
       (p) => `<div class="lobby-row">
