@@ -1668,7 +1668,7 @@ function bindNet() {
     net.youId = msg.you;
     renderLobby(msg.players);
     document.getElementById("btn-online").hidden = true;
-    document.getElementById("lobby-status").textContent = `ROOM ${msg.code} · host will start`;
+    document.getElementById("lobby-status").textContent = `အခန်း ${msg.code} · host will start`;
   });
   on("lobby", (msg) => renderLobby(msg.players));
   on("started", (msg) => beginOnlineGame(msg.players));
