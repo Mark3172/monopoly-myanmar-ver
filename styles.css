@@ -270,6 +270,10 @@ input {
   100% { transform: none; }
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .hint {
   margin: 0;
   color: rgba(246, 237, 216, 0.65);

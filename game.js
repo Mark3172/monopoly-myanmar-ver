@@ -1559,12 +1559,13 @@ let lobbyPlayers = [];
 function renderSelfSetup() {
   const box = document.getElementById("self-setup");
   if (!box) return;
-  const palette = PLAYER_PALETTE[0];
+  const name = playMode === "join" ? DEFAULT_NAMES[1] : DEFAULT_NAMES[0];
+  const colorIndex = playMode === "join" ? 1 : 0;
   box.innerHTML = `<div class="player-row">
     <div class="swatches" data-index="self"></div>
     <div>
       <label>သင့်နာမည်
-        <input type="text" maxlength="18" value="${DEFAULT_NAMES[0]}" id="self-name" />
+        <input type="text" maxlength="18" value="${name}" id="self-name" />
       </label>
     </div>
   </div>`;
@@ -1575,7 +1576,7 @@ function renderSelfSetup() {
     btn.className = "swatch-btn";
     btn.style.background = color.hex;
     btn.dataset.color = color.id;
-    btn.setAttribute("aria-pressed", String(ci === 0));
+    btn.setAttribute("aria-pressed", String(ci === colorIndex));
     swatches.appendChild(btn);
   });
 }
@@ -1622,6 +1623,7 @@ function setPlayMode(mode) {
   document.getElementById("btn-host-start").hidden = true;
   document.getElementById("lobby-list").hidden = true;
   document.getElementById("lobby-status").hidden = true;
+  renderSelfSetup();
 }
 
 function uniquifyLobby(players) {
@@ -1656,6 +1658,7 @@ function bindNet() {
     net.youId = msg.you;
     renderLobby(msg.players);
     document.getElementById("btn-online").hidden = true;
+    document.getElementById("join-code-wrap").hidden = true;
     document.getElementById("btn-host-start").hidden = false;
   });
   on("joined", (msg) => {
