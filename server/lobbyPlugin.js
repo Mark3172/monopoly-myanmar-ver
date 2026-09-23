@@ -133,7 +133,7 @@ function attachLobby(httpServer) {
         return;
       }
 
-      if (["sync", "walk", "dice", "pulse"].includes(msg.type)) {
+      if (["sync", "walk", "dice", "pulse", "trade-offer", "trade-answer", "trade-cancel"].includes(msg.type)) {
         broadcast(room, msg, ws);
       }
     });

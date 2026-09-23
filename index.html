@@ -18,7 +18,7 @@
     <div id="app" hidden>
       <header class="topbar">
         <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
+          <img class="brand-mark" src="./art/title-yangon.jpg" alt="" />
           <div class="wordmark">
             <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
             <h1>ဂျင်း-O-Poly</h1>
@@ -36,17 +36,29 @@
           <div class="board-wrap" id="board-wrap">
             <canvas id="board" aria-label="Gyin-O-Poly game board"></canvas>
             <div class="board-center" id="board-center">
-              <div class="wordmark center-brand">
-                <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
-                <p class="center-title">ဂျင်း-O-Poly</p>
+              <div class="title-plate center-brand">
+                <img src="./art/title-yangon.jpg" alt="" />
+                <div class="wordmark">
+                  <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
+                  <p class="center-title">ဂျင်း-O-Poly</p>
+                </div>
               </div>
               <div class="dice-row" aria-live="polite">
-                <div class="die" id="die-1" data-value="1"></div>
-                <div class="die" id="die-2" data-value="1"></div>
+                <button type="button" class="die" id="die-1" data-value="1" aria-label="အန်စာတုံး လှည့်" disabled></button>
+                <button type="button" class="die" id="die-2" data-value="1" aria-label="အန်စာတုံး လှည့်" disabled></button>
               </div>
               <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
-              <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
-              <button type="button" class="btn gold" id="btn-end" hidden>ပြီးပြီ</button>
+              <div class="center-actions">
+                <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
+                <button type="button" class="btn ghost" id="btn-trade" hidden>လဲလှယ်</button>
+              </div>
+              <button type="button" class="end-seal" id="btn-end" hidden>
+                <span class="end-seal-ring" aria-hidden="true"></span>
+                <span class="end-seal-face">
+                  <span class="end-kicker">အလှည့်</span>
+                  <span class="end-word">ပြီးပြီ</span>
+                </span>
+              </button>
             </div>
           </div>
           <p class="hint" id="board-hint">ကွက်ကို နှိပ် — အမည်အပြည့်အစုံက ညာဘက်မှာ။</p>
@@ -73,9 +85,12 @@
 
     <div id="setup-screen" class="overlay">
       <div class="setup-card">
-        <div class="wordmark">
-          <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
-          <h1>ဂျင်း-O-Poly</h1>
+        <div class="title-plate">
+          <img src="./art/title-yangon.jpg" alt="" />
+          <div class="wordmark">
+            <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
+            <h1>ဂျင်း-O-Poly</h1>
+          </div>
         </div>
         <p class="lede">
           ၂–၄ ယောက်။ တစ်စက်မှာပဲ ကစား၊ သို့မဟုတ် အခန်းကုဒ်နဲ့ သူများ ဝင်လာနိုင်တယ်။
@@ -114,6 +129,17 @@
           </div>
         </section>
         <p class="setup-foot">Online rooms need this dev server. Share the page URL plus the 4-letter code.</p>
+      </div>
+    </div>
+
+    <div id="trade-root" class="overlay modal-overlay" hidden>
+      <div class="modal trade-sheet" role="dialog" aria-modal="true" aria-labelledby="trade-title">
+        <div class="modal-accent" id="trade-accent"></div>
+        <p class="eyebrow" id="trade-kicker">လဲလှယ်</p>
+        <h2 id="trade-title">အရောင်းအဝယ်</h2>
+        <div id="trade-body" class="modal-body"></div>
+        <p id="trade-error" class="trade-error" hidden></p>
+        <div id="trade-actions" class="modal-actions"></div>
       </div>
     </div>
 

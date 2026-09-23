@@ -15,6 +15,8 @@ const ctx = canvas.getContext("2d");
 const dieEls = [document.getElementById("die-1"), document.getElementById("die-2")];
 const btnRoll = document.getElementById("btn-roll");
 const btnEnd = document.getElementById("btn-end");
+const btnTrade = document.getElementById("btn-trade");
+const tradeRoot = document.getElementById("trade-root");
 const turnLabel = document.getElementById("turn-label");
 const playerList = document.getElementById("player-list");
 const inspectBody = document.getElementById("inspect-body");
@@ -24,6 +26,35 @@ const setupScreen = document.getElementById("setup-screen");
 const app = document.getElementById("app");
 
 const PROPERTY_TYPES = new Set(["property", "transit", "utility"]);
+
+const PLACE_ART = {
+  "street-food": "place-street-food.jpg",
+  "tea-shops": "place-tea.jpg",
+  mookata: "place-mookata.jpg",
+  nightlife: "place-night.jpg",
+  markets: "place-market.jpg",
+  malls: "place-mall.jpg",
+  condos: "place-condo.jpg",
+  "golden-mile": "place-golden.jpg",
+  transit: "place-transit.jpg",
+  utility: "place-utility.jpg",
+  go: "place-go.jpg",
+  jail: "place-jail.jpg",
+  gotojail: "place-jail.jpg",
+  gyin: "place-gyin.jpg",
+  kyaw: "place-kyaw.jpg",
+  tax: "place-utility.jpg",
+  safe: "place-go.jpg",
+};
+
+function placeArt(tile) {
+  const file = (tile.group && PLACE_ART[tile.group]) || PLACE_ART[tile.type] || "place-go.jpg";
+  return `./art/${file}`;
+}
+
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
 
 const state = {
   players: [],
@@ -853,6 +884,11 @@ async function endGame(winner) {
   state.busy = false;
   btnRoll.disabled = true;
   btnEnd.hidden = true;
+  btnTrade.hidden = true;
+  dieEls.forEach((die) => {
+    die.disabled = true;
+  });
+  closeTrade();
   turnLabel.textContent = `${winner.name} နိုင်ပြီ`;
   await openModal({
     kicker: "Game Over",
@@ -874,7 +910,18 @@ function setPhase(phase) {
   const canAct = !state.busy && !player?.broke && state.phase !== "over" && mine;
   btnRoll.disabled = !(canAct && phase === "roll");
   btnRoll.hidden = phase !== "roll";
-  btnEnd.hidden = !(canAct && phase === "end");
+  dieEls.forEach((die) => {
+    die.disabled = !(canAct && phase === "roll");
+  });
+  const showEnd = canAct && phase === "end";
+  const wasHidden = btnEnd.hidden;
+  btnEnd.hidden = !showEnd;
+  if (wasHidden && showEnd) {
+    btnEnd.classList.remove("stamping");
+    void btnEnd.offsetWidth;
+    btnEnd.classList.add("stamping");
+  }
+  btnTrade.hidden = !(canAct && (phase === "roll" || phase === "end") && tradePartners().length > 0);
   if (!player) return;
   if (phase === "roll") {
     turnLabel.textContent = !mine
@@ -973,9 +1020,15 @@ function renderInspect(id) {
 
   const canUp = player && canUpgradeTile(player, tile);
   inspectBody.innerHTML = `<div class="inspect-card">
+    <figure class="place-card">
+      <img src="${placeArt(tile)}" alt="" />
+      <figcaption>
+        <strong>${esc(tile.name)}</strong>
+        <span>${esc(tile.nameEn)}</span>
+      </figcaption>
+    </figure>
     <div class="swatch" style="background:${group?.color ?? "#e0b14a"}"></div>
-    <h4>${tile.name}</h4>
-    <p class="en">${tile.nameEn}${group ? ` · ${group.labelEn}` : ""}</p>
+    <p class="en">${esc(group ? group.label : tile.nameEn)}</p>
     <p>${tile.price ? `ဈေး ${formatMMK(tile.price)}` : tile.amount ? `ပေးရန် ${formatMMK(tile.amount)}` : ""}</p>
     <p>${owner ? `ပိုင်ရှင်: ${owner.name} · ${upgradeLabels[level]}` : PROPERTY_TYPES.has(tile.type) ? "ပိုင်ရှင်မရှိ" : ""}</p>
     ${state.pot && tile.type === "safe" ? `<p>လက်ရှိအိုး: ${formatMMK(state.pot)}</p>` : ""}
@@ -1405,6 +1458,11 @@ async function playRoll() {
   if (net.online && !isMyTurn(player)) return;
   state.busy = true;
   btnRoll.disabled = true;
+  btnTrade.hidden = true;
+  dieEls.forEach((die) => {
+    die.disabled = true;
+    die.classList.remove("cocked");
+  });
   try {
     if (player.inJail) {
       const handled = await handleJail(player);
@@ -1494,6 +1552,7 @@ function showSetup() {
   setupScreen.hidden = false;
   modalRoot.hidden = true;
   resetNet();
+  closeTrade();
   const chip = document.getElementById("room-chip");
   if (chip) chip.hidden = true;
   renderSetupRows();
@@ -1650,6 +1709,249 @@ function beginOnlineGame(players) {
   }
 }
 
+function tradePartners() {
+  const me = currentPlayer();
+  if (!me) return [];
+  return state.players.filter((p) => p.index !== me.index && !p.broke);
+}
+
+function closeTrade() {
+  if (!tradeRoot) return;
+  tradeRoot.hidden = true;
+  document.getElementById("trade-error").hidden = true;
+}
+
+function setTradeActions(buttons) {
+  const actions = document.getElementById("trade-actions");
+  actions.innerHTML = "";
+  buttons.forEach((btn) => {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = `btn ${btn.className ?? ""}`.trim();
+    el.textContent = btn.label;
+    el.addEventListener("click", btn.onClick);
+    actions.appendChild(el);
+  });
+}
+
+function deedChecks(player, attr) {
+  const deeds = ownedProperties(player);
+  if (!deeds.length) return `<p class="meta">ကွက်မရှိ</p>`;
+  return deeds
+    .map((tile) => {
+      const locked = (state.upgrades[tile.id] ?? 0) > 0;
+      return `<label class="deed ${locked ? "locked" : ""}">
+        <input type="checkbox" ${attr} value="${tile.id}" ${locked ? "disabled" : ""} />
+        <span>${esc(tile.short || tile.name)}${locked ? " · Wi-Fi" : ""}</span>
+      </label>`;
+    })
+    .join("");
+}
+
+function showTradeError(message) {
+  const el = document.getElementById("trade-error");
+  el.hidden = !message;
+  el.textContent = message || "";
+}
+
+function openTrade() {
+  const me = currentPlayer();
+  const partners = tradePartners();
+  if (!me || !partners.length || state.busy) return;
+  const partner = partners[0];
+  document.getElementById("trade-kicker").textContent = "လဲလှယ်";
+  document.getElementById("trade-title").textContent = "အရောင်းအဝယ်";
+  document.getElementById("trade-accent").style.background = me.color;
+  document.getElementById("trade-body").innerHTML = `
+    <label class="trade-field">မိတ်ဖက်
+      <select id="trade-partner">
+        ${partners.map((p) => `<option value="${p.index}">${esc(p.name)}</option>`).join("")}
+      </select>
+    </label>
+    <div class="trade-grid">
+      <section class="trade-col">
+        <h3>${esc(me.name)} ပေးမည်</h3>
+        <div id="trade-give">${deedChecks(me, 'data-side="give"')}</div>
+        <label class="deed"><input type="checkbox" id="give-pass" ${me.jailPasses ? "" : "disabled"} /> လွတ်ကတ်${me.jailPasses ? ` ×${me.jailPasses}` : ""}</label>
+        <label class="trade-field">ငွေ (Ks)
+          <input id="give-cash" type="number" min="0" step="10000" value="0" />
+        </label>
+      </section>
+      <section class="trade-col">
+        <h3 id="trade-take-title">${esc(partner.name)} ပေးမည်</h3>
+        <div id="trade-take">${deedChecks(partner, 'data-side="take"')}</div>
+        <label class="deed"><input type="checkbox" id="take-pass" ${partner.jailPasses ? "" : "disabled"} /> <span id="take-pass-label">လွတ်ကတ်${partner.jailPasses ? ` ×${partner.jailPasses}` : ""}</span></label>
+        <label class="trade-field">ငွေ (Ks)
+          <input id="take-cash" type="number" min="0" step="10000" value="0" />
+        </label>
+      </section>
+    </div>`;
+  document.getElementById("trade-partner").addEventListener("change", (event) => {
+    const next = state.players[Number(event.target.value)];
+    document.getElementById("trade-take-title").textContent = `${next.name} ပေးမည်`;
+    document.getElementById("trade-take").innerHTML = deedChecks(next, 'data-side="take"');
+    const pass = document.getElementById("take-pass");
+    pass.checked = false;
+    pass.disabled = !next.jailPasses;
+    document.getElementById("take-pass-label").textContent = `လွတ်ကတ်${next.jailPasses ? ` ×${next.jailPasses}` : ""}`;
+  });
+  showTradeError("");
+  setTradeActions([
+    { label: "ကမ်းလှမ်းမည်", className: "primary", onClick: submitTrade },
+    { label: "မလုပ်တော့", onClick: () => { cancelTrade(); closeTrade(); } },
+  ]);
+  tradeRoot.hidden = false;
+}
+
+function cashInput(id, max) {
+  const raw = Number(document.getElementById(id)?.value);
+  if (!Number.isFinite(raw) || raw < 0) return 0;
+  return Math.min(max, Math.floor(raw));
+}
+
+function collectOffer() {
+  const me = currentPlayer();
+  const to = Number(document.getElementById("trade-partner").value);
+  const partner = state.players[to];
+  const offer = {
+    from: me.index,
+    to,
+    giveIds: [...document.querySelectorAll('[data-side="give"]:checked')].map((el) => Number(el.value)),
+    takeIds: [...document.querySelectorAll('[data-side="take"]:checked')].map((el) => Number(el.value)),
+    giveCash: cashInput("give-cash", me.money),
+    takeCash: cashInput("take-cash", partner?.money ?? 0),
+    givePass: Boolean(document.getElementById("give-pass")?.checked),
+    takePass: Boolean(document.getElementById("take-pass")?.checked),
+  };
+  const problem = tradeProblem(offer);
+  return { offer, problem };
+}
+
+function tradeProblem(offer) {
+  const from = state.players[offer.from];
+  const to = state.players[offer.to];
+  if (!from || !to || from.broke || to.broke || from.index === to.index) return "မိတ်ဖက်မမှန်ပါ။";
+  const owns = (id, player) => state.owners[id] === player.index && (state.upgrades[id] ?? 0) === 0;
+  if (offer.giveIds.some((id) => !owns(id, from))) return "ပေးမည့်ကွက်မှာ Wi-Fi ရှိနေတယ်။";
+  if (offer.takeIds.some((id) => !owns(id, to))) return "ယူမည့်ကွက်မှာ Wi-Fi ရှိနေတယ်။";
+  if (offer.giveCash < 0 || offer.giveCash > from.money) return "ပေးမည့်ငွေ မလုံလောက်ပါ။";
+  if (offer.takeCash < 0 || offer.takeCash > to.money) return "ယူမည့်ငွေ မလုံလောက်ပါ။";
+  if (offer.givePass && from.jailPasses < 1) return "လွတ်ကတ် မရှိပါ။";
+  if (offer.takePass && to.jailPasses < 1) return "တစ်ဖက်မှာ လွတ်ကတ် မရှိပါ။";
+  const moving = offer.giveIds.length + offer.takeIds.length + offer.giveCash + offer.takeCash + (offer.givePass ? 1 : 0) + (offer.takePass ? 1 : 0);
+  if (!moving) return "ပေးရန် တစ်ခုခု ရွေးပါ။";
+  return "";
+}
+
+function offerLines(ids, cash, pass) {
+  const names = ids.map((id) => tileById(id)?.name).filter(Boolean);
+  if (cash) names.push(formatMMK(cash));
+  if (pass) names.push("လွတ်ကတ်");
+  return names.length ? names.map((name) => esc(name)).join("၊ ") : "ဘာမှမရှိ";
+}
+
+function showTradeReview(offer, { remote = false } = {}) {
+  const from = state.players[offer.from];
+  const to = state.players[offer.to];
+  document.getElementById("trade-kicker").textContent = remote ? "ကမ်းလှမ်းချက်" : `${to.name} အတွက်`;
+  document.getElementById("trade-title").textContent = "လက်ခံမလား?";
+  document.getElementById("trade-accent").style.background = to.color;
+  document.getElementById("trade-body").innerHTML = `
+    <div class="trade-grid">
+      <section class="trade-col"><h3>${esc(from.name)} ပေးမည်</h3><p>${offerLines(offer.giveIds, offer.giveCash, offer.givePass)}</p></section>
+      <section class="trade-col"><h3>${esc(to.name)} ပေးမည်</h3><p>${offerLines(offer.takeIds, offer.takeCash, offer.takePass)}</p></section>
+    </div>`;
+  showTradeError("");
+  setTradeActions([
+    {
+      label: "လက်ခံမည်",
+      className: "primary",
+      onClick: () => {
+        if (remote) {
+          send({ type: "trade-answer", offer, accept: true });
+          closeTrade();
+          return;
+        }
+        acceptTrade(offer);
+      },
+    },
+    {
+      label: "ငြင်းမည်",
+      onClick: () => {
+        if (remote) send({ type: "trade-answer", offer, accept: false });
+        else log(`${to.name} လဲလှယ်ခြင်းကို ငြင်းတယ်။`);
+        closeTrade();
+      },
+    },
+  ]);
+  tradeRoot.hidden = false;
+}
+
+function showTradeWait(offer) {
+  const to = state.players[offer.to];
+  document.getElementById("trade-title").textContent = "စောင့်နေသည်";
+  document.getElementById("trade-body").innerHTML = `<p>${esc(to.name)} လက်ခံမလား စောင့်နေတယ်။</p>`;
+  showTradeError("");
+  setTradeActions([{ label: "ပယ်ဖျက်မည်", onClick: cancelTrade }]);
+  tradeRoot.hidden = false;
+}
+
+function submitTrade() {
+  const { offer, problem } = collectOffer();
+  if (problem) {
+    showTradeError(problem);
+    return;
+  }
+  if (net.online) {
+    send({ type: "trade-offer", offer });
+    showTradeWait(offer);
+    return;
+  }
+  showTradeReview(offer);
+}
+
+function acceptTrade(offer) {
+  if (tradeProblem(offer)) {
+    log("လဲလှယ်ခြင်း မပြီးပါ။");
+    closeTrade();
+    return;
+  }
+  const from = state.players[offer.from];
+  const to = state.players[offer.to];
+  offer.giveIds.forEach((id) => {
+    state.owners[id] = to.index;
+  });
+  offer.takeIds.forEach((id) => {
+    state.owners[id] = from.index;
+  });
+  from.money -= offer.giveCash;
+  to.money += offer.giveCash;
+  to.money -= offer.takeCash;
+  from.money += offer.takeCash;
+  if (offer.givePass) {
+    from.jailPasses -= 1;
+    to.jailPasses += 1;
+  }
+  if (offer.takePass) {
+    to.jailPasses -= 1;
+    from.jailPasses += 1;
+  }
+  log(`${from.name} နှင့် ${to.name} လဲလှယ်ကြတယ်။`);
+  closeTrade();
+  updateHUD();
+  drawBoard();
+  publish();
+}
+
+function cancelTrade() {
+  if (net.online && isMyTurn(currentPlayer())) send({ type: "trade-cancel" });
+  closeTrade();
+}
+
+function mySeat() {
+  return state.players.find((p) => p.netId && p.netId === net.youId) ?? null;
+}
+
 function bindNet() {
   on("created", (msg) => {
     net.online = true;
@@ -1705,6 +2007,22 @@ function bindNet() {
         requestAnimationFrame(() => resizeCanvas());
       }
     });
+  });
+  on("trade-offer", (msg) => {
+    const me = mySeat();
+    if (!me || me.index !== msg.offer?.to) return;
+    if (tradeProblem(msg.offer)) return;
+    showTradeReview(msg.offer, { remote: true });
+  });
+  on("trade-answer", (msg) => {
+    if (!isMyTurn(currentPlayer())) return;
+    closeTrade();
+    if (msg.accept) acceptTrade(msg.offer);
+    else log(`${state.players[msg.offer?.to]?.name ?? "တစ်ဖက်"} လဲလှယ်ခြင်းကို ငြင်းတယ်။`);
+  });
+  on("trade-cancel", () => {
+    if (isMyTurn(currentPlayer())) return;
+    closeTrade();
   });
   on("peer-left", (msg) => log(`${msg.name} ထွက်သွားတယ်။`));
   on("closed", () => {
@@ -1795,6 +2113,10 @@ function bindGame() {
     if (state.phase !== "end" || state.busy) return;
     finishTurn();
   });
+  btnTrade.addEventListener("click", () => {
+    if (btnTrade.hidden || state.busy) return;
+    openTrade();
+  });
 
   document.getElementById("btn-new").addEventListener("click", async () => {
     const ok = await openModal({
@@ -1821,8 +2143,10 @@ function bindGame() {
         <p>YBS, Grab, Bolt, ရထားဝိုင်း — ပိုင်သည့်စင်းရေအလိုက် ငှားရမ်းခ။ EPC မီတာဘေလ်နဲ့ ရေဘေလ်က အန်စာတုံးပေါ် မူတည်။</p>
         <h3>ဂျင်း နှင့် ၉ ကျော်တယ်</h3>
         <p>ဂျင်းက ဒဏ်တွေ (ဆေထိုးခံရ၊ ပလပ်ကျွတ်)။ ၉ ကျော်တယ်က ဆုတွေ (ဒိုင်ရှိုး၊ SKB Status)။</p>
+        <h3>လဲလှယ်</h3>
+        <p>သင့်အလှည့်မှာ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို အရင်ဖြုတ်မှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
         <h3>ရွာပြင်</h3>
-        <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။</p>
+        <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။ အန်စာတုံးကို နှိပ်ပြီး လှည့်နိုင်တယ်။</p>
       </div>`,
       buttons: [{ label: "ပိတ်မည်", className: "primary", value: "ok" }],
     });
@@ -1869,6 +2193,14 @@ async function boot() {
         die.appendChild(pip);
       }
     }
+    die.addEventListener("pointerdown", () => {
+      if (!die.disabled) die.classList.add("cocked");
+    });
+    die.addEventListener("pointerup", () => die.classList.remove("cocked"));
+    die.addEventListener("pointerleave", () => die.classList.remove("cocked"));
+    die.addEventListener("click", () => {
+      if (!die.disabled) playRoll();
+    });
   });
   bindNet();
   bindSetup();
