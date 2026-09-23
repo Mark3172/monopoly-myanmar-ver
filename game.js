@@ -47,6 +47,15 @@ const PLACE_ART = {
   safe: "place-go.jpg",
 };
 
+function bandInk(hex) {
+  const raw = String(hex || "").replace("#", "");
+  if (raw.length < 6) return "#fffaf0";
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 160 ? "#1c140c" : "#fffaf0";
+}
+
 function placeArt(tile) {
   const file = (tile.group && PLACE_ART[tile.group]) || PLACE_ART[tile.type] || "place-go.jpg";
   return `./art/${file}`;
@@ -342,28 +351,90 @@ function resizeCanvas() {
   drawBoard();
 }
 
+let surfacePatterns = null;
+
+function makeSurfacePatterns() {
+  const wood = document.createElement("canvas");
+  wood.width = 160;
+  wood.height = 160;
+  const wg = wood.getContext("2d");
+  wg.fillStyle = "#6a3d1c";
+  wg.fillRect(0, 0, 160, 160);
+  for (let y = 0; y < 160; y += 3) {
+    wg.strokeStyle = y % 2 === 0 ? "rgba(40,18,6,0.28)" : "rgba(255,196,120,0.08)";
+    wg.beginPath();
+    wg.moveTo(0, y);
+    wg.bezierCurveTo(40, y + 2, 90, y - 2, 160, y + 1);
+    wg.stroke();
+  }
+  wg.fillStyle = "rgba(255,220,160,0.05)";
+  wg.fillRect(0, 0, 160, 18);
+
+  const felt = document.createElement("canvas");
+  felt.width = 96;
+  felt.height = 96;
+  const fg = felt.getContext("2d");
+  fg.fillStyle = "#0f5a40";
+  fg.fillRect(0, 0, 96, 96);
+  for (let i = 0; i < 420; i += 1) {
+    const shade = 40 + ((i * 17) % 50);
+    fg.fillStyle = `rgba(${shade},${shade + 30},${shade},0.16)`;
+    fg.fillRect((i * 13) % 96, (i * 29) % 96, 1, 1);
+  }
+
+  return {
+    wood: ctx.createPattern(wood, "repeat"),
+    felt: ctx.createPattern(felt, "repeat"),
+  };
+}
+
 function drawBoard() {
   const layout = state.layout;
   if (!layout) return;
   const { cssSize, rects } = layout;
+  if (!surfacePatterns) surfacePatterns = makeSurfacePatterns();
 
   ctx.clearRect(0, 0, cssSize, cssSize);
 
-  roundRect(ctx, 0, 0, cssSize, cssSize, cssSize * 0.035);
-  ctx.fillStyle = "#4a2c12";
+  roundRect(ctx, 0, 0, cssSize, cssSize, cssSize * 0.028);
+  ctx.fillStyle = surfacePatterns.wood;
   ctx.fill();
+  ctx.save();
+  roundRect(ctx, 1.5, 1.5, cssSize - 3, cssSize - 3, cssSize * 0.026);
+  ctx.strokeStyle = "rgba(255,220,170,0.28)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 
-  roundRect(ctx, layout.frame * 0.35, layout.frame * 0.35, cssSize - layout.frame * 0.7, cssSize - layout.frame * 0.7, cssSize * 0.03);
-  ctx.fillStyle = "#146048";
+  const inset = Math.max(7, cssSize * 0.012);
+  roundRect(ctx, inset, inset, cssSize - inset * 2, cssSize - inset * 2, cssSize * 0.02);
+  ctx.fillStyle = "#123f2e";
   ctx.fill();
+  ctx.save();
+  roundRect(ctx, inset, inset, cssSize - inset * 2, cssSize - inset * 2, cssSize * 0.02);
+  ctx.clip();
+  ctx.fillStyle = surfacePatterns.felt;
+  ctx.globalAlpha = 0.55;
+  ctx.fillRect(inset, inset, cssSize, cssSize);
+  ctx.restore();
 
   const inner = layout.origin + layout.corner;
   const innerSize = layout.board - layout.corner * 2;
-  roundRect(ctx, inner + 3, inner + 3, innerSize - 6, innerSize - 6, 12);
-  ctx.fillStyle = "#0e4a38";
+  roundRect(ctx, inner + 6, inner + 6, innerSize - 12, innerSize - 12, 18);
+  const feltShade = ctx.createRadialGradient(
+    inner + innerSize * 0.45,
+    inner + innerSize * 0.4,
+    innerSize * 0.1,
+    inner + innerSize / 2,
+    inner + innerSize / 2,
+    innerSize * 0.72,
+  );
+  feltShade.addColorStop(0, "rgba(32,120,86,0.35)");
+  feltShade.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = feltShade;
   ctx.fill();
-  ctx.strokeStyle = "rgba(224,177,74,0.28)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(212,168,74,0.35)";
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
   TILES.forEach((tile) => drawTile(tile, rects[tile.id]));
@@ -386,25 +457,38 @@ function drawTile(tile, rect) {
   const current = currentPlayer();
   const isHere = current && !current.broke && current.position === tile.id;
 
+  const pad = 1.6;
   ctx.save();
-  roundRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 4);
+  roundRect(ctx, rect.x + pad, rect.y + pad, rect.w - pad * 2, rect.h - pad * 2, 3);
   ctx.clip();
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1;
 
-  ctx.fillStyle = tile.type === "gyin" ? "#3b2218" : tile.type === "kyaw" ? "#1d3d32" : "#f4ead6";
-  if (tile.type === "go") ctx.fillStyle = "#f7e7b0";
-  if (tile.type === "jail") ctx.fillStyle = "#e3d2b6";
-  if (tile.type === "safe") ctx.fillStyle = "#d5eee0";
-  if (tile.type === "gotojail") ctx.fillStyle = "#f0c9be";
-  if (tile.type === "tax") ctx.fillStyle = "#efe2c8";
-  if (tile.type === "transit") ctx.fillStyle = "#ece6dc";
-  if (tile.type === "utility") ctx.fillStyle = "#e4e8ea";
-  ctx.fill();
+  const paper = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
+  paper.addColorStop(0, "#fff8ea");
+  paper.addColorStop(1, "#e7d7b8");
+  ctx.fillStyle = paper;
+  if (tile.type === "gyin") ctx.fillStyle = "#4a2a1c";
+  if (tile.type === "kyaw") ctx.fillStyle = "#1c4636";
+  if (tile.type === "go") ctx.fillStyle = "#f3dd9a";
+  if (tile.type === "jail") ctx.fillStyle = "#e4d3b4";
+  if (tile.type === "safe") ctx.fillStyle = "#d7efe4";
+  if (tile.type === "gotojail") ctx.fillStyle = "#f0c8bb";
+  if (tile.type === "tax") ctx.fillStyle = "#efe0c4";
+  if (tile.type === "transit") ctx.fillStyle = "#efe8dc";
+  if (tile.type === "utility") ctx.fillStyle = "#e3e7ea";
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.shadowColor = "transparent";
 
   if (tile.type === "property" && tile.group && GROUPS[tile.group]) {
     const bar = barRect(rect);
     if (bar) {
       ctx.fillStyle = GROUPS[tile.group].color;
       ctx.fillRect(bar.x, bar.y, bar.w, bar.h);
+      ctx.fillStyle = "rgba(255,255,255,0.28)";
+      if (rect.side === "bottom" || rect.side === "top") ctx.fillRect(bar.x, bar.y, bar.w, 2);
+      else ctx.fillRect(bar.x, bar.y, 2, bar.h);
     }
   }
 
@@ -542,20 +626,22 @@ function drawOwnership(tile, rect) {
   const level = state.upgrades[tile.id] ?? 0;
   if (!level) return;
   const bar = barRect(rect) ?? rect;
-  ctx.fillStyle = level >= 5 ? "#f0c45a" : "#fffaf0";
-  if (level >= 5) {
+  const hotel = level >= 5;
+  const count = hotel ? 1 : level;
+  for (let i = 0; i < count; i += 1) {
+    const bw = hotel ? 11 : 6;
+    const bh = Math.max(6, bar.h - 5);
+    const bx = bar.x + 3 + i * (bw + 1);
+    const by = bar.y + (bar.h - bh) / 2;
+    ctx.fillStyle = hotel ? "#9d1c1c" : "#1f7a3a";
+    ctx.fillRect(bx, by + 2, bw, bh - 2);
     ctx.beginPath();
-    ctx.moveTo(bar.x + bar.w / 2, bar.y + 3);
-    ctx.lineTo(bar.x + bar.w / 2 + 5, bar.y + bar.h - 3);
-    ctx.lineTo(bar.x + bar.w / 2 - 5, bar.y + bar.h - 3);
+    ctx.moveTo(bx - 1, by + 2);
+    ctx.lineTo(bx + bw / 2, by - 1);
+    ctx.lineTo(bx + bw + 1, by + 2);
     ctx.closePath();
+    ctx.fillStyle = hotel ? "#c44536" : "#2f9a4e";
     ctx.fill();
-  } else {
-    for (let i = 0; i < level; i += 1) {
-      const bx = bar.x + 3 + i * 7;
-      const by = bar.y + Math.max(2, (bar.h - 6) / 2);
-      ctx.fillRect(bx, by, 5, 5);
-    }
   }
 }
 
@@ -575,30 +661,51 @@ function drawTokens() {
     const mates = state.players.filter((p) => !p.broke && p.position === player.position);
     const idx = mates.indexOf(player);
     const pos = tokenDrawPos(player, idx);
-    const r = 11 * pos.scale;
+    const r = 12 * pos.scale;
     ctx.save();
     ctx.beginPath();
-    ctx.fillStyle = `rgba(0,0,0,${0.22 + pos.hop * 0.012})`;
-    ctx.ellipse(pos.x + 1, pos.y + 4 + pos.hop * 0.35, r * 0.95, r * 0.38, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,0,0,${0.28 + pos.hop * 0.01})`;
+    ctx.ellipse(pos.x + 1, pos.y + 6 + pos.hop * 0.4, r * 0.85, r * 0.32, 0, 0, Math.PI * 2);
     ctx.fill();
+    const gloss = ctx.createRadialGradient(pos.x - r * 0.35, pos.y - r * 0.4, r * 0.1, pos.x, pos.y, r);
+    gloss.addColorStop(0, "#fff6df");
+    gloss.addColorStop(0.45, player.color);
+    gloss.addColorStop(1, "#1a1008");
+    ctx.fillStyle = gloss;
+    ctx.strokeStyle = "rgba(20,10,4,0.85)";
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.fillStyle = player.color;
-    ctx.strokeStyle = "#1c140c";
-    ctx.lineWidth = 3;
-    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.strokeStyle = "#fff8ea";
-    ctx.lineWidth = 1.5;
-    ctx.arc(pos.x, pos.y, r * 0.84, 0, Math.PI * 2);
-    ctx.stroke();
+    if (player.color === "#d4a017") {
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(90,50,8,0.7)";
+      ctx.stroke();
+    } else if (player.color === "#c44536") {
+      ctx.moveTo(pos.x, pos.y - r);
+      ctx.lineTo(pos.x + r * 0.86, pos.y);
+      ctx.lineTo(pos.x, pos.y + r);
+      ctx.lineTo(pos.x - r * 0.86, pos.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (player.color === "#2b6cb0") {
+      roundRect(ctx, pos.x - r * 0.82, pos.y - r * 0.7, r * 1.64, r * 1.4, 3);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     ctx.fillStyle = "#fff8ea";
-    ctx.font = `700 ${Math.round(10 * pos.scale)}px "Noto Sans Myanmar"`;
+    ctx.font = `700 ${Math.round(9 * pos.scale)}px "Noto Sans Myanmar"`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const initial = graphemes(player.name)[0] ?? "?";
-    ctx.fillText(initial, pos.x, pos.y + 1);
+    ctx.fillText(initial, pos.x, pos.y + 0.5);
     ctx.restore();
   });
 }
@@ -1019,7 +1126,7 @@ function renderInspect(id) {
   }
 
   const canUp = player && canUpgradeTile(player, tile);
-  inspectBody.innerHTML = `<div class="inspect-card">
+  inspectBody.innerHTML = `<div class="inspect-card deed-card">
     <figure class="place-card">
       <img src="${placeArt(tile)}" alt="" />
       <figcaption>
@@ -1027,13 +1134,14 @@ function renderInspect(id) {
         <span>${esc(tile.nameEn)}</span>
       </figcaption>
     </figure>
-    <div class="swatch" style="background:${group?.color ?? "#e0b14a"}"></div>
-    <p class="en">${esc(group ? group.label : tile.nameEn)}</p>
+    <div class="deed-band" style="background:${group?.color ?? "#c9a15b"};color:${bandInk(group?.color ?? "#c9a15b")}">${esc(group ? group.label : tile.name)}</div>
+    <div class="deed-body">
     <p>${tile.price ? `ဈေး ${formatMMK(tile.price)}` : tile.amount ? `ပေးရန် ${formatMMK(tile.amount)}` : ""}</p>
     <p>${owner ? `ပိုင်ရှင်: ${owner.name} · ${upgradeLabels[level]}` : PROPERTY_TYPES.has(tile.type) ? "ပိုင်ရှင်မရှိ" : ""}</p>
     ${state.pot && tile.type === "safe" ? `<p>လက်ရှိအိုး: ${formatMMK(state.pot)}</p>` : ""}
     ${extra}
     ${canUp ? `<button type="button" class="btn gold" id="btn-upgrade" style="margin-top:0.6rem">တိုးတက်အောင်လုပ် (${formatMMK(group.upgradeCost)})</button>` : ""}
+    </div>
   </div>`;
 
   const upBtn = document.getElementById("btn-upgrade");

@@ -241,18 +241,21 @@ input {
 }
 
 .die {
-  width: 3.1rem;
-  height: 3.1rem;
+  width: 3.25rem;
+  height: 3.25rem;
   border: 0;
-  padding: 0.38rem;
+  padding: 0.42rem;
   cursor: pointer;
   font: inherit;
   color: inherit;
-  border-radius: 0.55rem;
-  background: linear-gradient(160deg, #fffdf6, #e8d9b5);
+  border-radius: 0.72rem;
+  background:
+    linear-gradient(145deg, #fffef8 0%, #f4e6c4 42%, #d9c396 100%);
   box-shadow:
-    0 8px 16px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 #fff;
+    inset 0 1px 0 #fff,
+    inset 0 -7px 8px rgba(120, 80, 30, 0.22),
+    0 2px 0 #b89a62,
+    0 9px 12px rgba(0, 0, 0, 0.38);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
@@ -278,10 +281,11 @@ input {
 }
 
 .die .pip {
-  width: 0.46rem;
-  height: 0.46rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: #2a1a0c;
+  background: radial-gradient(circle at 35% 30%, #6a4330, #140c08 70%);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.65);
   justify-self: center;
   align-self: center;
   opacity: 0;
@@ -413,8 +417,15 @@ input {
   font-family: var(--latin);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: #f3d37a;
+  color: #3a250c;
   white-space: nowrap;
+  background: linear-gradient(180deg, #f8e7b2, #d7a441 55%, #b8862a);
+  border-radius: 0.28rem;
+  padding: 0.28rem 0.42rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 1px 2px rgba(0, 0, 0, 0.35);
+  font-size: 0.78rem;
 }
 
 .player-card .meta {
@@ -504,6 +515,35 @@ input {
   color: var(--gold);
   font-family: var(--latin);
   font-size: 0.75rem;
+}
+
+.deed-card {
+  background: #f6efe2;
+  color: #24180f;
+  border-radius: 0.55rem;
+  overflow: hidden;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.deed-band {
+  padding: 0.35rem 0.7rem;
+  color: #fffaf0;
+  font-weight: 700;
+  line-height: 1.5;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.deed-body {
+  padding: 0.65rem 0.75rem 0.8rem;
+}
+
+.deed-card .rent-table td {
+  color: #24180f;
+  border-bottom-color: rgba(36, 24, 15, 0.12);
+}
+
+.deed-card .rent-table td:last-child {
+  color: #6a4514;
 }
 
 .inspect-card h4 {
@@ -795,7 +835,7 @@ input {
 
 @keyframes money-pop {
   0% { transform: scale(1); }
-  40% { transform: scale(1.12); color: #fff; }
+  40% { transform: scale(1.1); filter: brightness(1.18); }
   100% { transform: scale(1); }
 }
 
