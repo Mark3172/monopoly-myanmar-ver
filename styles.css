@@ -74,30 +74,29 @@ input {
 }
 
 .brand-mark {
-  width: 2.5rem;
-  height: 2.5rem;
-  display: grid;
-  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: none;
   border-radius: 0.55rem;
-  background: linear-gradient(160deg, var(--gold), #8a5a10);
-  color: var(--teak-dark);
+  background:
+    linear-gradient(160deg, var(--gold), #8a5a10);
+  box-shadow:
+    inset 0 0 0 0.28rem #146048,
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.wordmark .eyebrow {
+  margin: 0;
+}
+
+.brand h1,
+.wordmark h1 {
+  margin: 0;
   font-family: var(--display);
+  font-size: 1.15rem;
   font-weight: 700;
-  font-size: 1.25rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
-}
-
-.brand h1 {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 1.2rem;
-  letter-spacing: 0.01em;
-}
-
-.brand p {
-  margin: 0;
-  color: var(--gold);
-  font-size: 0.75rem;
+  line-height: 1.45;
+  letter-spacing: 0;
 }
 
 .topbar-actions {
@@ -164,26 +163,30 @@ input {
   pointer-events: auto;
 }
 
-.center-kicker,
-.center-title {
-  display: none;
-}
-
-.center-kicker,
 .eyebrow {
   margin: 0;
   color: var(--gold);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  font-size: 0.68rem;
-  font-family: var(--latin);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.78rem;
+  font-family: var(--font);
   font-weight: 700;
+  line-height: 1.7;
+}
+
+.center-brand {
+  display: grid;
+  justify-items: center;
+  gap: 0.05rem;
 }
 
 .center-title {
   margin: 0;
   font-family: var(--display);
-  font-size: clamp(1.4rem, 3.4vw, 2.2rem);
+  font-weight: 700;
+  font-size: clamp(1.05rem, 8cqi, 1.85rem);
+  line-height: 1.45;
+  letter-spacing: 0;
   color: #f8e7b0;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
@@ -192,6 +195,8 @@ input {
   margin: 0;
   color: var(--cream);
   font-size: 0.86rem;
+  line-height: 1.6;
+  letter-spacing: 0;
   max-width: 14rem;
 }
 
@@ -302,11 +307,13 @@ input {
 
 .panel h3 {
   margin: 0 0 0.6rem;
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 0.92rem;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.65;
   color: var(--gold);
-  font-family: var(--latin);
+  font-family: var(--font);
+  font-weight: 700;
 }
 
 .player-list {
@@ -346,6 +353,8 @@ input {
 .player-card h4 {
   margin: 0;
   font-size: 0.95rem;
+  line-height: 1.6;
+  letter-spacing: 0;
 }
 
 .player-card .money {
@@ -396,6 +405,8 @@ input {
 
 .log li {
   font-size: 0.8rem;
+  line-height: 1.65;
+  letter-spacing: 0;
   color: rgba(246, 237, 216, 0.82);
   border-left: 2px solid var(--gold-deep);
   padding-left: 0.5rem;
@@ -408,7 +419,11 @@ input {
 
 .inspect-card h4 {
   margin: 0 0 0.2rem;
-  font-size: 1.05rem;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.55;
+  letter-spacing: 0;
 }
 
 .inspect-card .en {
@@ -447,6 +462,8 @@ input {
   padding: 0.55rem 1rem;
   cursor: pointer;
   font-weight: 700;
+  line-height: 1.55;
+  letter-spacing: 0;
   color: var(--cream);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -527,9 +544,12 @@ input {
 
 .setup-card h1,
 .modal h2 {
-  margin: 0.2rem 0 0.55rem;
+  margin: 0.15rem 0 0.45rem;
   font-family: var(--display);
   font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0;
 }
 
 .lede {
@@ -654,9 +674,10 @@ input {
 .lobby-status {
   margin: 0.4rem 0;
   color: #f3d37a;
-  font-family: var(--latin);
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-family: var(--font);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.6;
 }
 
 .lobby-list {
@@ -744,6 +765,10 @@ input {
   margin: 0.8rem 0 0.3rem;
   color: var(--gold);
   font-size: 0.95rem;
+  font-family: var(--font);
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .noscript {
@@ -780,7 +805,11 @@ input {
 
 @media (max-width: 520px) {
   .center-title {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
+  }
+
+  .center-brand .eyebrow {
+    display: none;
   }
 
   .die {
@@ -799,9 +828,12 @@ input {
   }
 }
 
-@container (max-width: 620px) {
-  .center-kicker,
-  .center-title {
+@container (max-width: 520px) {
+  .center-brand .eyebrow {
     display: none;
+  }
+
+  .center-title {
+    font-size: 0.95rem;
   }
 }
