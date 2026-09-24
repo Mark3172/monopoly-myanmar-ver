@@ -1164,6 +1164,8 @@ function setPhase(phase) {
     btnEnd.classList.add("arriving");
   }
   btnTrade.hidden = !(canAct && (phase === "roll" || phase === "end") && tradePartners().length > 0);
+  const actions = document.querySelector(".turn-actions");
+  if (actions) actions.hidden = btnRoll.hidden && btnTrade.hidden;
   if (!player) return;
   if (phase === "roll") {
     turnLabel.textContent = !mine
@@ -1173,7 +1175,7 @@ function setPhase(phase) {
         : "သင့်အလှည့်";
     btnRoll.textContent = player.inJail ? "ထွက်မည်" : "လှည့်";
   } else if (phase === "end") {
-    turnLabel.textContent = mine ? "ပြီးအောင်" : `${player.name}`;
+    turnLabel.textContent = mine ? "ပြီးအောင် — အောက်က ပလိတ်ကို နှိပ်" : `${player.name}`;
   }
 }
 

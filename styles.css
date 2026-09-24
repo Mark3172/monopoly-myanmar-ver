@@ -204,6 +204,10 @@ input {
   height: 4.4rem;
 }
 
+.board-center .title-plate .wordmark {
+  padding: 1.4rem 0.7rem 0.45rem;
+}
+
 .center-brand {
   display: block;
 }
@@ -219,13 +223,30 @@ input {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
 
-.turn-label {
-  margin: 0;
+.turn-card .turn-label {
+  margin: 0 0 0.65rem;
   color: var(--cream);
-  font-size: 0.86rem;
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.55;
   letter-spacing: 0;
-  max-width: 14rem;
+  max-width: none;
+}
+
+.turn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.turn-card .end-turn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.turn-card .end-turn[hidden] + .turn-actions,
+.turn-actions:empty {
+  margin-bottom: 0;
 }
 
 .dice-stage {
@@ -238,13 +259,6 @@ input {
 
 .dice-stage.live {
   z-index: 8;
-}
-
-.center-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.45rem;
 }
 
 .die {

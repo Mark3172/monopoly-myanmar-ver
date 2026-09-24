@@ -43,28 +43,31 @@
               <div class="title-plate center-brand">
                 <img src="./art/title-yangon.jpg" alt="" />
                 <div class="wordmark">
-                  <p class="eyebrow">ရန်ကုန်မြို့က ဂျင်းဘုတ်ဂိမ်း</p>
                   <p class="center-title">ဂျင်း-O-Poly</p>
                 </div>
               </div>
-              <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
-              <div class="center-actions">
-                <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
-                <button type="button" class="btn ghost" id="btn-trade" hidden>လဲလှယ်</button>
-              </div>
-              <button type="button" class="end-turn" id="btn-end" hidden>
-                <span class="end-turn-check" aria-hidden="true"></span>
-                <span class="end-turn-copy">
-                  <span class="end-kicker">ဒီအလှည့်</span>
-                  <span class="end-word">ပြီးပြီ</span>
-                </span>
-              </button>
             </div>
           </div>
           <p class="hint" id="board-hint">အန်စာတုံးကို ဆွဲပြီး ပစ်ပါ။ ကွက်ကို နှိပ်ရင် အမည်ပေါ်မယ်။</p>
         </section>
 
         <aside class="hud" id="hud">
+          <section class="panel turn-card" id="turn-card">
+            <h3>အလှည့်</h3>
+            <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
+            <div class="turn-actions">
+              <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
+              <button type="button" class="btn ghost" id="btn-trade" hidden>လဲလှယ်</button>
+            </div>
+            <button type="button" class="end-turn" id="btn-end" hidden>
+              <span class="end-turn-check" aria-hidden="true"></span>
+              <span class="end-turn-copy">
+                <span class="end-kicker">ဒီအလှည့်</span>
+                <span class="end-word">ပြီးပြီ</span>
+              </span>
+            </button>
+          </section>
+
           <section class="panel" id="inspect-panel">
             <h3>ကွက်အချက်အလက်</h3>
             <div id="inspect-body" class="inspect-empty">ဘုတ်ပေါ်က ကွက်တစ်ခုကို ရွေးပါ။</div>
