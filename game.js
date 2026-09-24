@@ -349,6 +349,7 @@ function resizeCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   state.layout = computeLayout(cssSize);
   drawBoard();
+  if (!state.busy && !dieDrag) parkDice();
 }
 
 let surfacePatterns = null;
@@ -732,22 +733,156 @@ function paintDice(d1, d2) {
   dieEls[1].dataset.value = String(d2);
 }
 
+const diceStage = document.getElementById("dice-stage");
+let pendingToss = null;
+let dieDrag = null;
+
+function dieSize() {
+  return dieEls[0]?.offsetWidth || 52;
+}
+
+function restSpot(index) {
+  const w = diceStage?.clientWidth || 0;
+  const h = diceStage?.clientHeight || 0;
+  const s = dieSize();
+  const gap = 12;
+  return {
+    x: w / 2 + (index === 0 ? -(s + gap) : gap),
+    y: Math.max(8, h * 0.62),
+  };
+}
+
+function setDiePose(el, x, y, rx = 0, ry = 0, lift = 0) {
+  el.style.transform = `translate3d(${x}px, ${y}px, ${lift}px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+  el._pose = { x, y, rx, ry };
+}
+
+function parkDice() {
+  if (!diceStage || diceStage.clientWidth < 40 || state.busy || dieDrag) return;
+  dieEls.forEach((el, index) => {
+    const spot = restSpot(index);
+    setDiePose(el, spot.x, spot.y, 0, 0, 0);
+  });
+}
+
+function clampDie(value, max) {
+  return Math.max(0, Math.min(max, value));
+}
+
+async function glideDiceHome() {
+  const from = dieEls.map((el, index) => ({ ...(el._pose || restSpot(index)), spot: restSpot(index) }));
+  const start = performance.now();
+  await new Promise((resolve) => {
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / 320);
+      const e = easeInOut(t);
+      dieEls.forEach((el, index) => {
+        const pose = from[index];
+        setDiePose(
+          el,
+          pose.x + (pose.spot.x - pose.x) * e,
+          pose.y + (pose.spot.y - pose.y) * e,
+          pose.rx * (1 - e),
+          pose.ry * (1 - e),
+          8 * (1 - e),
+        );
+      });
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
 async function animateDice(forced) {
-  dieEls.forEach((el) => el.classList.add("rolling"));
-  const end = performance.now() + (forced ? 480 : 780);
-  while (performance.now() < end) {
-    paintDice(1 + randInt(6), 1 + randInt(6));
-    await wait(60);
-  }
+  const toss = pendingToss;
+  pendingToss = null;
   const d1 = forced?.d1 ?? 1 + randInt(6);
   const d2 = forced?.d2 ?? 1 + randInt(6);
-  paintDice(d1, d2);
-  dieEls.forEach((el) => {
-    el.classList.remove("rolling");
-    el.classList.remove("settle");
-    void el.offsetWidth;
-    el.classList.add("settle");
+  const w = diceStage?.clientWidth || 0;
+  const h = diceStage?.clientHeight || 0;
+  const s = dieSize();
+  if (w < 40 || h < 40) {
+    paintDice(d1, d2);
+    return { d1, d2 };
+  }
+  const bodies = dieEls.map((el, index) => {
+    const pose = el._pose || restSpot(index);
+    let vx;
+    let vy;
+    if (toss && toss.index === index) {
+      vx = toss.vx;
+      vy = toss.vy;
+    } else if (toss) {
+      vx = toss.vx * 0.55 + (index === 0 ? -90 : 90);
+      vy = toss.vy * 0.55 - 60;
+    } else {
+      vx = (index === 0 ? -1 : 1) * (240 + Math.random() * 160);
+      vy = -320 - Math.random() * 140;
+    }
+    if (Math.hypot(vx, vy) < 320) {
+      const ang = Math.atan2(vy || -1, vx || (index ? 1 : -1));
+      vx = Math.cos(ang) * 420;
+      vy = Math.sin(ang) * 420;
+    }
+    return {
+      el,
+      x: pose.x,
+      y: pose.y,
+      vx,
+      vy,
+      rx: pose.rx || 0,
+      ry: pose.ry || 0,
+      sx: vx * 1.6,
+      sy: -vy * 1.2,
+    };
   });
+  let last = performance.now();
+  const start = last;
+  await new Promise((resolve) => {
+    const frame = (now) => {
+      const dt = Math.min(0.034, (now - last) / 1000);
+      last = now;
+      const flick = now - start < 980;
+      bodies.forEach((body) => {
+        const drag = Math.exp(-1.35 * dt);
+        body.vx *= drag;
+        body.vy *= drag;
+        body.x += body.vx * dt;
+        body.y += body.vy * dt;
+        const maxX = w - s;
+        const maxY = h - s;
+        if (body.x < 0) {
+          body.x = 0;
+          body.vx = Math.abs(body.vx) * 0.62;
+          body.sy += 240;
+        } else if (body.x > maxX) {
+          body.x = maxX;
+          body.vx = -Math.abs(body.vx) * 0.62;
+          body.sy -= 240;
+        }
+        if (body.y < 0) {
+          body.y = 0;
+          body.vy = Math.abs(body.vy) * 0.62;
+        } else if (body.y > maxY) {
+          body.y = maxY;
+          body.vy = -Math.abs(body.vy) * 0.62;
+        }
+        body.rx += body.sx * dt;
+        body.ry += body.sy * dt;
+        body.sx *= Math.exp(-0.9 * dt);
+        body.sy *= Math.exp(-0.9 * dt);
+        const lift = Math.min(26, Math.hypot(body.vx, body.vy) * 0.05);
+        if (flick && Math.random() < 0.45) body.el.dataset.value = String(1 + randInt(6));
+        setDiePose(body.el, body.x, body.y, body.rx, body.ry, lift);
+      });
+      if (now - start < 1080) requestAnimationFrame(frame);
+      else resolve();
+    };
+    requestAnimationFrame(frame);
+  });
+  paintDice(d1, d2);
+  await glideDiceHome();
   return { d1, d2 };
 }
 
@@ -1024,9 +1159,9 @@ function setPhase(phase) {
   const wasHidden = btnEnd.hidden;
   btnEnd.hidden = !showEnd;
   if (wasHidden && showEnd) {
-    btnEnd.classList.remove("stamping");
+    btnEnd.classList.remove("arriving");
     void btnEnd.offsetWidth;
-    btnEnd.classList.add("stamping");
+    btnEnd.classList.add("arriving");
   }
   btnTrade.hidden = !(canAct && (phase === "roll" || phase === "end") && tradePartners().length > 0);
   if (!player) return;
@@ -2293,7 +2428,7 @@ function bindGame() {
 }
 
 async function boot() {
-  dieEls.forEach((die) => {
+  dieEls.forEach((die, index) => {
     if (!die.childElementCount) {
       for (let i = 0; i < 9; i += 1) {
         const pip = document.createElement("span");
@@ -2301,15 +2436,58 @@ async function boot() {
         die.appendChild(pip);
       }
     }
-    die.addEventListener("pointerdown", () => {
-      if (!die.disabled) die.classList.add("cocked");
-    });
-    die.addEventListener("pointerup", () => die.classList.remove("cocked"));
-    die.addEventListener("pointerleave", () => die.classList.remove("cocked"));
-    die.addEventListener("click", () => {
-      if (!die.disabled) playRoll();
+    die.addEventListener("pointerdown", (event) => {
+      if (die.disabled || state.busy || state.phase !== "roll") return;
+      event.preventDefault();
+      const box = diceStage.getBoundingClientRect();
+      const pose = die._pose || restSpot(index);
+      die.setPointerCapture(event.pointerId);
+      die.classList.add("grabbed");
+      diceStage.classList.add("live");
+      dieDrag = {
+        index,
+        pointerId: event.pointerId,
+        dx: event.clientX - box.left - pose.x,
+        dy: event.clientY - box.top - pose.y,
+        samples: [{ x: event.clientX, y: event.clientY, t: performance.now() }],
+      };
     });
   });
+  window.addEventListener("pointermove", (event) => {
+    if (!dieDrag || event.pointerId !== dieDrag.pointerId) return;
+    const box = diceStage.getBoundingClientRect();
+    const size = dieSize();
+    const x = clampDie(event.clientX - box.left - dieDrag.dx, box.width - size);
+    const y = clampDie(event.clientY - box.top - dieDrag.dy, box.height - size);
+    const die = dieEls[dieDrag.index];
+    setDiePose(die, x, y, -18, 14, 22);
+    const now = performance.now();
+    dieDrag.samples.push({ x: event.clientX, y: event.clientY, t: now });
+    dieDrag.samples = dieDrag.samples.filter((sample) => now - sample.t < 90);
+  });
+  window.addEventListener("pointerup", (event) => {
+    if (!dieDrag || event.pointerId !== dieDrag.pointerId) return;
+    const drag = dieDrag;
+    dieDrag = null;
+    const die = dieEls[drag.index];
+    die.classList.remove("grabbed");
+    diceStage.classList.remove("live");
+    const samples = drag.samples;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    const dt = Math.max(16, last.t - first.t);
+    pendingToss = {
+      index: drag.index,
+      vx: ((last.x - first.x) / dt) * 1000,
+      vy: ((last.y - first.y) / dt) * 1000,
+    };
+    if (!die.disabled && state.phase === "roll" && !state.busy) playRoll();
+    else {
+      pendingToss = null;
+      parkDice();
+    }
+  });
+  requestAnimationFrame(() => parkDice());
   bindNet();
   bindSetup();
   bindGame();

@@ -35,6 +35,10 @@
         <section class="board-column">
           <div class="board-wrap" id="board-wrap">
             <canvas id="board" aria-label="Gyin-O-Poly game board"></canvas>
+            <div class="dice-stage" id="dice-stage">
+              <button type="button" class="die" id="die-1" data-value="1" aria-label="အန်စာတုံးကို ဆွဲပြီး ပစ်" disabled></button>
+              <button type="button" class="die" id="die-2" data-value="1" aria-label="အန်စာတုံးကို ဆွဲပြီး ပစ်" disabled></button>
+            </div>
             <div class="board-center" id="board-center">
               <div class="title-plate center-brand">
                 <img src="./art/title-yangon.jpg" alt="" />
@@ -43,25 +47,21 @@
                   <p class="center-title">ဂျင်း-O-Poly</p>
                 </div>
               </div>
-              <div class="dice-row" aria-live="polite">
-                <button type="button" class="die" id="die-1" data-value="1" aria-label="အန်စာတုံး လှည့်" disabled></button>
-                <button type="button" class="die" id="die-2" data-value="1" aria-label="အန်စာတုံး လှည့်" disabled></button>
-              </div>
               <p class="turn-label" id="turn-label">အလှည့်ကျရောက်ရန်</p>
               <div class="center-actions">
                 <button type="button" class="btn primary roll" id="btn-roll">လှည့်</button>
                 <button type="button" class="btn ghost" id="btn-trade" hidden>လဲလှယ်</button>
               </div>
-              <button type="button" class="end-seal" id="btn-end" hidden>
-                <span class="end-seal-ring" aria-hidden="true"></span>
-                <span class="end-seal-face">
-                  <span class="end-kicker">အလှည့်</span>
+              <button type="button" class="end-turn" id="btn-end" hidden>
+                <span class="end-turn-check" aria-hidden="true"></span>
+                <span class="end-turn-copy">
+                  <span class="end-kicker">ဒီအလှည့်</span>
                   <span class="end-word">ပြီးပြီ</span>
                 </span>
               </button>
             </div>
           </div>
-          <p class="hint" id="board-hint">ကွက်ကို နှိပ် — အမည်အပြည့်အစုံက ညာဘက်မှာ။</p>
+          <p class="hint" id="board-hint">အန်စာတုံးကို ဆွဲပြီး ပစ်ပါ။ ကွက်ကို နှိပ်ရင် အမည်ပေါ်မယ်။</p>
         </section>
 
         <aside class="hud" id="hud">
