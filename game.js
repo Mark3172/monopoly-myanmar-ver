@@ -1175,7 +1175,7 @@ function setPhase(phase) {
         : "သင့်အလှည့်";
     btnRoll.textContent = player.inJail ? "ထွက်မည်" : "လှည့်";
   } else if (phase === "end") {
-    turnLabel.textContent = mine ? "ပြီးအောင် — အောက်က ပြီးပြီ ကို နှိပ်" : `${player.name}`;
+    turnLabel.textContent = mine ? "ပြီးအောင် — ပြီးပြီ ကို နှိပ်" : `${player.name}`;
   }
 }
 
@@ -2440,10 +2440,15 @@ async function boot() {
     }
     die.addEventListener("pointerdown", (event) => {
       if (die.disabled || state.busy || state.phase !== "roll") return;
+      if (event.button != null && event.button !== 0) return;
       event.preventDefault();
       const box = diceStage.getBoundingClientRect();
       const pose = die._pose || restSpot(index);
-      die.setPointerCapture(event.pointerId);
+      try {
+        die.setPointerCapture(event.pointerId);
+      } catch {
+        /* capture optional — window listeners still track the toss */
+      }
       die.classList.add("grabbed");
       diceStage.classList.add("live");
       dieDrag = {
@@ -2465,7 +2470,7 @@ async function boot() {
     setDiePose(die, x, y, -18, 14, 22);
     const now = performance.now();
     dieDrag.samples.push({ x: event.clientX, y: event.clientY, t: now });
-    dieDrag.samples = dieDrag.samples.filter((sample) => now - sample.t < 90);
+    dieDrag.samples = dieDrag.samples.filter((sample) => now - sample.t < 120);
   });
   window.addEventListener("pointerup", (event) => {
     if (!dieDrag || event.pointerId !== dieDrag.pointerId) return;
@@ -2479,9 +2484,11 @@ async function boot() {
     } catch {
       /* already released */
     }
-    const samples = drag.samples;
+    const samples = drag.samples.length
+      ? drag.samples
+      : [{ x: event.clientX, y: event.clientY, t: performance.now() }];
     const first = samples[0];
-    const last = samples[samples.length - 1] || first;
+    const last = samples[samples.length - 1];
     const dt = Math.max(16, last.t - first.t);
     pendingToss = {
       index: drag.index,
@@ -2494,8 +2501,8 @@ async function boot() {
       parkDice();
     }
   });
-  window.addEventListener("pointercancel", () => {
-    if (!dieDrag) return;
+  window.addEventListener("pointercancel", (event) => {
+    if (!dieDrag || (event.pointerId != null && event.pointerId !== dieDrag.pointerId)) return;
     const die = dieEls[dieDrag.index];
     die.classList.remove("grabbed");
     diceStage.classList.remove("live");

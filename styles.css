@@ -251,7 +251,6 @@ input {
 
 .turn-card .end-turn {
   width: 100%;
-  justify-content: flex-start;
 }
 
 .turn-card .end-turn[hidden] {
@@ -321,6 +320,7 @@ input {
   justify-self: center;
   align-self: center;
   opacity: 0;
+  pointer-events: none;
 }
 
 .die[data-value="1"] .pip:nth-child(5),
@@ -878,11 +878,12 @@ input {
 .end-turn {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  min-width: 11.5rem;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 999px;
-  padding: 0.45rem 1rem 0.45rem 0.45rem;
+  padding: 0.5rem 1.15rem 0.5rem 0.5rem;
   cursor: pointer;
   color: #2a180c;
   background:
@@ -894,9 +895,9 @@ input {
 }
 
 .end-turn-check {
-  width: 2.4rem;
-  height: 2.4rem;
-  flex: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 2.35rem;
   border-radius: 50%;
   background:
     radial-gradient(circle at 35% 30%, #fff, #f3d37a 40%, #8a5a10 100%);
@@ -916,22 +917,19 @@ input {
   transform: rotate(40deg);
 }
 
-.end-turn-copy {
-  display: grid;
-  justify-items: start;
-  line-height: 1.35;
-}
-
-.end-kicker {
-  font-size: 0.72rem;
-  color: rgba(42, 24, 12, 0.72);
-}
-
-.end-word {
-  font-family: var(--display);
-  font-size: 1.2rem;
+.end-turn .end-word {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font);
+  font-size: 1.05rem;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.7;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 }
 
 .end-turn.arriving {
