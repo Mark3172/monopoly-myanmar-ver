@@ -745,10 +745,10 @@ function restSpot(index) {
   const w = diceStage?.clientWidth || 0;
   const h = diceStage?.clientHeight || 0;
   const s = dieSize();
-  const gap = 12;
+  const gap = 14;
   return {
-    x: w / 2 + (index === 0 ? -(s + gap) : gap),
-    y: Math.max(8, h * 0.62),
+    x: w / 2 + (index === 0 ? -(s + gap / 2) : gap / 2),
+    y: Math.max(18, Math.min(h - s - 18, h * 0.48)),
   };
 }
 
@@ -1175,7 +1175,7 @@ function setPhase(phase) {
         : "သင့်အလှည့်";
     btnRoll.textContent = player.inJail ? "ထွက်မည်" : "လှည့်";
   } else if (phase === "end") {
-    turnLabel.textContent = mine ? "ပြီးအောင် — အောက်က ပလိတ်ကို နှိပ်" : `${player.name}`;
+    turnLabel.textContent = mine ? "ပြီးအောင် — အောက်က ပြီးပြီ ကို နှိပ်" : `${player.name}`;
   }
 }
 
@@ -1613,7 +1613,6 @@ async function handleJail(player) {
     player.inJail = false;
     log(`${player.name} လွတ်ကတ်သုံးပြီး ရွာပြင်က ထွက်တယ်။`);
     setPhase("roll");
-    btnRoll.textContent = "အန်စာတုံးလှည့်";
     return false;
   }
 
@@ -1625,7 +1624,6 @@ async function handleJail(player) {
     if (!ok) return true;
     player.inJail = false;
     setPhase("roll");
-    btnRoll.textContent = "အန်စာတုံးလှည့်";
     return false;
   }
 
@@ -1706,8 +1704,9 @@ async function playRoll() {
   btnTrade.hidden = true;
   dieEls.forEach((die) => {
     die.disabled = true;
-    die.classList.remove("cocked");
+    die.classList.remove("grabbed");
   });
+  diceStage?.classList.remove("live");
   try {
     if (player.inJail) {
       const handled = await handleJail(player);
@@ -1731,6 +1730,7 @@ async function playRoll() {
     if (state.phase === "end") setPhase("end");
     updateHUD();
     drawBoard();
+    parkDice();
     publish();
   }
 }
@@ -2389,9 +2389,9 @@ function bindGame() {
         <h3>ဂျင်း နှင့် ၉ ကျော်တယ်</h3>
         <p>ဂျင်းက ဒဏ်တွေ (ဆေထိုးခံရ၊ ပလပ်ကျွတ်)။ ၉ ကျော်တယ်က ဆုတွေ (ဒိုင်ရှိုး၊ SKB Status)။</p>
         <h3>လဲလှယ်</h3>
-        <p>သင့်အလှည့်မှာ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို အရင်ဖြုတ်မှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
+        <p>သင့်အလှည့်မှာ ညာဘက်ကတ်က <strong>လဲလှယ်</strong> နဲ့ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို အရင်ဖြုတ်မှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
         <h3>ရွာပြင်</h3>
-        <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။ အန်စာတုံးကို နှိပ်ပြီး လှည့်နိုင်တယ်။</p>
+        <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။ အန်စာတုံးကို ဆွဲပြီး ပစ်လှည့်နိုင်တယ်။ အလှည့်ပြီးရင် ညာဘက်ကတ်က <strong>ပြီးပြီ</strong> ကို နှိပ်။</p>
       </div>`,
       buttons: [{ label: "ပိတ်မည်", className: "primary", value: "ok" }],
     });
@@ -2474,9 +2474,14 @@ async function boot() {
     const die = dieEls[drag.index];
     die.classList.remove("grabbed");
     diceStage.classList.remove("live");
+    try {
+      die.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
     const samples = drag.samples;
     const first = samples[0];
-    const last = samples[samples.length - 1];
+    const last = samples[samples.length - 1] || first;
     const dt = Math.max(16, last.t - first.t);
     pendingToss = {
       index: drag.index,
@@ -2489,7 +2494,17 @@ async function boot() {
       parkDice();
     }
   });
+  window.addEventListener("pointercancel", () => {
+    if (!dieDrag) return;
+    const die = dieEls[dieDrag.index];
+    die.classList.remove("grabbed");
+    diceStage.classList.remove("live");
+    dieDrag = null;
+    pendingToss = null;
+    parkDice();
+  });
   requestAnimationFrame(() => parkDice());
+  window.addEventListener("resize", () => parkDice());
   bindNet();
   bindSetup();
   bindGame();

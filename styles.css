@@ -146,19 +146,19 @@ input {
 .board-center {
   position: absolute;
   inset: 13.6%;
-  z-index: 4;
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 0.55rem;
-  padding: 1rem;
+  padding: 0.55rem 0.7rem;
   text-align: center;
   pointer-events: none;
 }
 
 .board-center > * {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .eyebrow {
@@ -196,12 +196,13 @@ input {
 }
 
 .board-center .title-plate {
-  width: min(100%, 15rem);
+  width: min(100%, 12.5rem);
   margin: 0;
+  opacity: 0.94;
 }
 
 .board-center .title-plate img {
-  height: 4.4rem;
+  height: 3.4rem;
 }
 
 .board-center .title-plate .wordmark {
@@ -223,6 +224,11 @@ input {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
 
+.turn-card {
+  border-color: rgba(224, 177, 74, 0.4);
+  background: linear-gradient(180deg, rgba(224, 177, 74, 0.12), rgba(255, 248, 234, 0.03));
+}
+
 .turn-card .turn-label {
   margin: 0 0 0.65rem;
   color: var(--cream);
@@ -239,26 +245,29 @@ input {
   margin-bottom: 0.55rem;
 }
 
+.turn-actions[hidden] {
+  display: none !important;
+}
+
 .turn-card .end-turn {
   width: 100%;
   justify-content: flex-start;
 }
 
-.turn-card .end-turn[hidden] + .turn-actions,
-.turn-actions:empty {
-  margin-bottom: 0;
+.turn-card .end-turn[hidden] {
+  display: none !important;
 }
 
 .dice-stage {
   position: absolute;
   inset: 15.2%;
-  z-index: 3;
+  z-index: 5;
   pointer-events: none;
   perspective: 900px;
 }
 
 .dice-stage.live {
-  z-index: 8;
+  z-index: 9;
 }
 
 .die {
