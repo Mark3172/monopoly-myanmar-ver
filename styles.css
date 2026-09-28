@@ -225,6 +225,7 @@ input {
 }
 
 .turn-card {
+  border-width: 2px;
   border-color: rgba(224, 177, 74, 0.4);
   background: linear-gradient(180deg, rgba(224, 177, 74, 0.12), rgba(255, 248, 234, 0.03));
 }

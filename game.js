@@ -188,10 +188,26 @@ function rentFor(tile, visitor, diceTotal) {
   return tile.rents[level] ?? tile.rent;
 }
 
+function safeColor(value) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(value)) ? String(value) : "#1f8a62";
+}
+
+function renderLog() {
+  logEl.innerHTML = state.log.map((line) => `<li>${esc(line)}</li>`).join("");
+}
+
 function log(message) {
   state.log.unshift(message);
   state.log = state.log.slice(0, 40);
-  logEl.innerHTML = state.log.map((line) => `<li>${line}</li>`).join("");
+  renderLog();
+}
+
+function tradeIsOpen() {
+  return Boolean(tradeRoot && !tradeRoot.hidden);
+}
+
+function actingNow(player = currentPlayer()) {
+  return Boolean(player) && (!net.online || isMyTurn(player));
 }
 
 function easeInOut(t) {
@@ -1004,7 +1020,7 @@ function applySnapshot(snap) {
   state.doublesStreak = snap.doublesStreak;
   state.log = snap.log ?? [];
   state.selected = snap.selected ?? state.selected;
-  logEl.innerHTML = state.log.map((line) => `<li>${line}</li>`).join("");
+  renderLog();
   paintDice(state.lastDice.d1, state.lastDice.d2);
 }
 
@@ -1172,8 +1188,10 @@ function setPhase(phase) {
       ? `${player.name} အလှည့်`
       : player.inJail
         ? "ရွာပြင် — ထွက်မလား?"
-        : "သင့်အလှည့်";
-    btnRoll.textContent = player.inJail ? "ထွက်မည်" : "လှည့်";
+        : state.doublesStreak > 0
+          ? "ဒိုင်ဗယ် — ထပ်လှည့်"
+          : "သင့်အလှည့်";
+    btnRoll.textContent = player.inJail ? "ထွက်မည်" : state.doublesStreak > 0 ? "ထပ်လှည့်" : "လှည့်";
   } else if (phase === "end") {
     turnLabel.textContent = mine ? "ပြီးအောင် — ပြီးပြီ ကို နှိပ်" : `${player.name}`;
   }
@@ -1189,7 +1207,7 @@ function updateHUD() {
           const color = t.group ? groupColor(t.group) : "#888";
           const up = state.upgrades[t.id] ?? 0;
           const mark = up >= 5 ? " ⚡" : up ? ` ${"▂".repeat(up)}` : "";
-          return `<button type="button" data-tile="${t.id}" title="${t.name}" style="background:${color};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${t.short || t.nameEn}${mark}</button>`;
+          return `<button type="button" data-tile="${t.id}" title="${esc(t.name)}" style="background:${safeColor(color)};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${esc(t.short || t.nameEn)}${mark}</button>`;
         })
         .join("");
       const flags = [
@@ -1201,9 +1219,9 @@ function updateHUD() {
         .filter(Boolean)
         .join(" · ");
       return `<article class="player-card ${p.index === state.current ? "active" : ""} ${p.broke ? "broke" : ""}" data-player="${p.index}">
-        <span class="token-dot" style="--token:${p.color};background:${p.color}"></span>
+        <span class="token-dot" style="--token:${safeColor(p.color)};background:${safeColor(p.color)}"></span>
         <div>
-          <h4>${p.name}</h4>
+          <h4>${esc(p.name)}</h4>
           <p class="meta">${p.colorLabel} · ကွက် ${p.position}${flags ? ` · ${flags}` : ""}</p>
           <div class="owned">${chips || "<span class='meta'>ပိုင်ဆိုင်မှု မရှိသေး</span>"}</div>
         </div>
@@ -1227,8 +1245,10 @@ function updateHUD() {
   });
 
   if (state.selected != null) renderInspect(state.selected);
-  if (player) {
-    turnLabel.style.color = player.color;
+  const turnCard = document.getElementById("turn-card");
+  if (player && turnCard) {
+    turnLabel.style.color = "";
+    turnCard.style.borderColor = safeColor(player.color);
   }
 }
 
@@ -1262,7 +1282,10 @@ function renderInspect(id) {
     extra = `<p>${tile.subtitle}</p>`;
   }
 
-  const canUp = player && canUpgradeTile(player, tile);
+  const mine = actingNow(player);
+  const canUp = mine && player && canUpgradeTile(player, tile);
+  const canSell = mine && player && canDowngradeTile(player, tile);
+  const refund = tile.group ? Math.floor((GROUPS[tile.group]?.upgradeCost ?? 0) / 2) : 0;
   inspectBody.innerHTML = `<div class="inspect-card deed-card">
     <figure class="place-card">
       <img src="${placeArt(tile)}" alt="" />
@@ -1278,11 +1301,14 @@ function renderInspect(id) {
     ${state.pot && tile.type === "safe" ? `<p>လက်ရှိအိုး: ${formatMMK(state.pot)}</p>` : ""}
     ${extra}
     ${canUp ? `<button type="button" class="btn gold" id="btn-upgrade" style="margin-top:0.6rem">တိုးတက်အောင်လုပ် (${formatMMK(group.upgradeCost)})</button>` : ""}
+    ${canSell ? `<button type="button" class="btn ghost" id="btn-downgrade" style="margin-top:0.45rem">ဖြုတ်မည် (+${formatMMK(refund)})</button>` : ""}
     </div>
   </div>`;
 
   const upBtn = document.getElementById("btn-upgrade");
   if (upBtn) upBtn.addEventListener("click", () => upgradeTile(tile));
+  const downBtn = document.getElementById("btn-downgrade");
+  if (downBtn) downBtn.addEventListener("click", () => downgradeTile(tile));
 }
 
 function selectTile(id) {
@@ -1291,9 +1317,33 @@ function selectTile(id) {
   drawBoard();
 }
 
-function upgradeTile(tile) {
+function canDowngradeTile(player, tile, { ignoreBusy = false } = {}) {
+  if (!player || player.broke || tile.type !== "property") return false;
+  if (state.phase !== "roll" && state.phase !== "end") return false;
+  if (state.owners[tile.id] !== player.index) return false;
+  const level = state.upgrades[tile.id] ?? 0;
+  if (level <= 0) return false;
+  const max = Math.max(...tilesInGroup(tile.group).map((t) => state.upgrades[t.id] ?? 0));
+  if (level < max) return false;
+  return ignoreBusy || !state.busy;
+}
+
+function downgradeTile(tile) {
   const player = currentPlayer();
-  if (!canUpgradeTile(player, tile)) return;
+  if (!actingNow(player) || !canDowngradeTile(player, tile)) return;
+  const cost = GROUPS[tile.group]?.upgradeCost ?? 0;
+  state.upgrades[tile.id] -= 1;
+  const refund = Math.floor(cost / 2);
+  player.money += refund;
+  log(`${player.name} ${tile.name} က တပ်ဆင်မှု ဖြုတ်ပြီး ${formatMMK(refund)} ပြန်ရတယ်။`);
+  updateHUD();
+  drawBoard();
+  publish();
+}
+
+function upgradeTile(tile, { ignoreBusy = false } = {}) {
+  const player = currentPlayer();
+  if (!actingNow(player) || !canUpgradeTile(player, tile, { ignoreBusy })) return;
   const cost = GROUPS[tile.group].upgradeCost;
   player.money -= cost;
   state.upgrades[tile.id] = (state.upgrades[tile.id] ?? 0) + 1;
@@ -1550,7 +1600,7 @@ async function resolveTile(player, dice) {
             ]
           : [{ label: "ကောင်းပြီ", className: "primary", value: "ok" }],
       });
-      if (choice === "up") upgradeTile(tile);
+      if (choice === "up") upgradeTile(tile, { ignoreBusy: true });
       return;
     }
 
@@ -1566,7 +1616,7 @@ async function resolveTile(player, dice) {
 
     const rent = rentFor(tile, player, dice.d1 + dice.d2);
     await openModal({
-      kicker: "Rent",
+      kicker: "ငှားရမ်းခ",
       title: `${tile.name} ငှားရမ်းခ`,
       accent: groupColor(tile.group),
       body: `<p>${owner.name} ပိုင်တယ်။</p><p class="price-line">${formatMMK(rent)}</p>`,
@@ -1599,7 +1649,7 @@ async function handleJail(player) {
   }
 
   const choice = await openModal({
-    kicker: `Jail turn ${player.jailTurns + 1}/${CONFIG.jailMaxTurns}`,
+    kicker: `ရွာပြင် ${player.jailTurns + 1}/${CONFIG.jailMaxTurns}`,
     title: "ရွာပြင်ရောက်မယ်",
     accent: "#c44536",
     body: `<p>${mustPay ? "သုံးကြိမ်ပြည့်ပြီ။ ဒဏ်ကြေးပေးပြီး ထွက်ရမယ်။" : "ဒဏ်ကြေးပေး၊ လွတ်ကတ်သုံး၊ သို့မဟုတ် ဒိုင်ဗယ်ကျမှ ထွက်။"}</p>`,
@@ -1663,7 +1713,6 @@ function afterResolve(player, dice, { fromJail = false } = {}) {
     state.doublesStreak += 1;
     log(`${player.name} ဒိုင်ဗယ်ကျ — နောက်ထပ်တစ်ခါ လှည့်။`);
     setPhase("roll");
-    btnRoll.textContent = "ထပ်လှည့် (ဒိုင်ဗယ်)";
     return;
   }
   state.doublesStreak = 0;
@@ -1697,7 +1746,7 @@ function finishTurn() {
 
 async function playRoll() {
   const player = currentPlayer();
-  if (!player || state.busy || state.phase !== "roll" || player.broke) return;
+  if (!player || state.busy || state.phase !== "roll" || player.broke || tradeIsOpen()) return;
   if (net.online && !isMyTurn(player)) return;
   state.busy = true;
   btnRoll.disabled = true;
@@ -1902,11 +1951,13 @@ function renderLobby(players) {
   list.innerHTML = players
     .map(
       (p) => `<div class="lobby-row">
-      <span class="token-dot" style="--token:${p.color};background:${p.color}"></span>
-      <span>${p.name}${p.host ? " · host" : ""}</span>
+      <span class="token-dot" style="--token:${safeColor(p.color)};background:${safeColor(p.color)}"></span>
+      <span>${esc(p.name)}${p.host ? " · host" : ""}</span>
     </div>`,
     )
     .join("");
+  const startBtn = document.getElementById("btn-host-start");
+  if (startBtn && net.isHost) startBtn.hidden = players.length < 2;
   const chip = document.getElementById("room-chip");
   if (chip && net.code) {
     chip.hidden = false;
@@ -2206,7 +2257,6 @@ function bindNet() {
     renderLobby(msg.players);
     document.getElementById("btn-online").hidden = true;
     document.getElementById("join-code-wrap").hidden = true;
-    document.getElementById("btn-host-start").hidden = false;
   });
   on("joined", (msg) => {
     net.online = true;
@@ -2220,8 +2270,15 @@ function bindNet() {
   on("lobby", (msg) => renderLobby(msg.players));
   on("started", (msg) => beginOnlineGame(msg.players));
   on("error", (msg) => {
+    const known = {
+      "Room not found.": "အခန်းကုဒ် မတွေ့ပါ။",
+      "That table already started.": "ဒီအခန်း စနေပြီ။",
+      "Table is full (4).": "လူပြည့်ပြီ (၄ ယောက်)။",
+      "Need at least 2 players.": "အနည်းဆုံး ၂ ယောက် လိုတယ်။",
+      "Host left. Room closed.": "အခန်းဖွင့်သူ ထွက်သွားလို့ အခန်းပိတ်ပြီ။",
+    };
     document.getElementById("lobby-status").hidden = false;
-    document.getElementById("lobby-status").textContent = msg.message;
+    document.getElementById("lobby-status").textContent = known[msg.message] ?? msg.message;
   });
   on("dice", (msg) => {
     enqueueNet(async () => {
@@ -2389,7 +2446,7 @@ function bindGame() {
         <h3>ဂျင်း နှင့် ၉ ကျော်တယ်</h3>
         <p>ဂျင်းက ဒဏ်တွေ (ဆေထိုးခံရ၊ ပလပ်ကျွတ်)။ ၉ ကျော်တယ်က ဆုတွေ (ဒိုင်ရှိုး၊ SKB Status)။</p>
         <h3>လဲလှယ်</h3>
-        <p>သင့်အလှည့်မှာ ညာဘက်ကတ်က <strong>လဲလှယ်</strong> နဲ့ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို အရင်ဖြုတ်မှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
+        <p>သင့်အလှည့်မှာ ညာဘက်ကတ်က <strong>လဲလှယ်</strong> နဲ့ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို ကွက်အချက်အလက်မှာ <strong>ဖြုတ်မည်</strong> နှိပ်ပြီးမှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
         <h3>ရွာပြင်</h3>
         <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။ အန်စာတုံးကို ဆွဲပြီး ပစ်လှည့်နိုင်တယ်။ အလှည့်ပြီးရင် ညာဘက်ကတ်က <strong>ပြီးပြီ</strong> ကို နှိပ်။</p>
       </div>`,
@@ -2416,7 +2473,7 @@ function bindGame() {
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.code === "Space" && modalRoot.hidden && state.phase === "roll") {
+    if (event.code === "Space" && modalRoot.hidden && !tradeIsOpen() && state.phase === "roll" && !event.repeat) {
       event.preventDefault();
       playRoll();
     }
@@ -2495,7 +2552,7 @@ async function boot() {
       vx: ((last.x - first.x) / dt) * 1000,
       vy: ((last.y - first.y) / dt) * 1000,
     };
-    if (!die.disabled && state.phase === "roll" && !state.busy) playRoll();
+    if (!die.disabled && state.phase === "roll" && !state.busy && !tradeIsOpen()) playRoll();
     else {
       pendingToss = null;
       parkDice();
