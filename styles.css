@@ -263,7 +263,7 @@ input {
   inset: 15.2%;
   z-index: 5;
   pointer-events: none;
-  perspective: 900px;
+  perspective: 1200px;
 }
 
 .dice-stage.live {
@@ -297,6 +297,7 @@ input {
   grid-template-rows: repeat(3, 1fr);
   gap: 0.12rem;
   transform-style: preserve-3d;
+  transform-origin: center center;
 }
 
 .die.grabbed {

@@ -214,6 +214,10 @@ function easeInOut(t) {
   return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
 }
 
+function easeOutCubic(t) {
+  return 1 - (1 - t) ** 3;
+}
+
 function roundRect(context, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2);
   context.beginPath();
@@ -768,9 +772,13 @@ function restSpot(index) {
   };
 }
 
-function setDiePose(el, x, y, rx = 0, ry = 0, lift = 0) {
-  el.style.transform = `translate3d(${x}px, ${y}px, ${lift}px) rotateX(${rx}deg) rotateY(${ry}deg)`;
-  el._pose = { x, y, rx, ry };
+function setDiePose(el, x, y, rx = 0, ry = 0, lift = 0, scale = 1, rz = 0) {
+  const hop = Math.max(0, lift);
+  el.style.transform = `translate3d(${x}px, ${y - hop}px, 0) rotate(${rz}deg) rotateX(${rx}deg) rotateY(${ry}deg) scale(${scale})`;
+  el.style.boxShadow = hop > 1
+    ? `inset 0 1px 0 #fff, inset 0 -7px 8px rgba(120, 80, 30, 0.22), 0 ${8 + hop * 0.45}px ${14 + hop}px rgba(0,0,0,${Math.min(0.5, 0.26 + hop * 0.006)})`
+    : "";
+  el._pose = { x, y, rx, ry, lift: hop, scale, rz };
 }
 
 function parkDice() {
@@ -786,21 +794,26 @@ function clampDie(value, max) {
 }
 
 async function glideDiceHome() {
-  const from = dieEls.map((el, index) => ({ ...(el._pose || restSpot(index)), spot: restSpot(index) }));
+  const from = dieEls.map((el, index) => {
+    const pose = el._pose || { ...restSpot(index), rx: 0, ry: 0, lift: 0, scale: 1 };
+    return { ...pose, spot: restSpot(index) };
+  });
   const start = performance.now();
   await new Promise((resolve) => {
     const tick = (now) => {
-      const t = Math.min(1, (now - start) / 320);
-      const e = easeInOut(t);
+      const t = Math.min(1, (now - start) / 520);
+      const e = easeOutCubic(t);
       dieEls.forEach((el, index) => {
         const pose = from[index];
         setDiePose(
           el,
           pose.x + (pose.spot.x - pose.x) * e,
           pose.y + (pose.spot.y - pose.y) * e,
-          pose.rx * (1 - e),
-          pose.ry * (1 - e),
-          8 * (1 - e),
+          (pose.rx || 0) * (1 - e),
+          (pose.ry || 0) * (1 - e),
+          (pose.lift || 0) * (1 - e),
+          1 + ((pose.scale || 1) - 1) * (1 - e),
+          (pose.rz || 0) * (1 - e),
         );
       });
       if (t < 1) requestAnimationFrame(tick);
@@ -815,6 +828,7 @@ async function animateDice(forced) {
   pendingToss = null;
   const d1 = forced?.d1 ?? 1 + randInt(6);
   const d2 = forced?.d2 ?? 1 + randInt(6);
+  const values = [d1, d2];
   const w = diceStage?.clientWidth || 0;
   const h = diceStage?.clientHeight || 0;
   const s = dieSize();
@@ -822,80 +836,73 @@ async function animateDice(forced) {
     paintDice(d1, d2);
     return { d1, d2 };
   }
-  const bodies = dieEls.map((el, index) => {
-    const pose = el._pose || restSpot(index);
+  const faces = [1, 3, 5, 6, 4, 2];
+  const duration = 1320;
+  const plans = dieEls.map((el, index) => {
+    const pose = el._pose || { ...restSpot(index), rx: 0, ry: 0, lift: 0, scale: 1 };
+    const spot = restSpot(index);
     let vx;
     let vy;
     if (toss && toss.index === index) {
       vx = toss.vx;
       vy = toss.vy;
     } else if (toss) {
-      vx = toss.vx * 0.55 + (index === 0 ? -90 : 90);
-      vy = toss.vy * 0.55 - 60;
+      vx = toss.vx * 0.42 + (index === 0 ? -120 : 120);
+      vy = toss.vy * 0.42 - 70;
     } else {
-      vx = (index === 0 ? -1 : 1) * (240 + Math.random() * 160);
-      vy = -320 - Math.random() * 140;
+      vx = (index === 0 ? -1 : 1) * (160 + Math.random() * 70);
+      vy = -200 - Math.random() * 50;
     }
-    if (Math.hypot(vx, vy) < 320) {
-      const ang = Math.atan2(vy || -1, vx || (index ? 1 : -1));
-      vx = Math.cos(ang) * 420;
-      vy = Math.sin(ang) * 420;
-    }
+    const speed = Math.max(80, Math.hypot(vx, vy));
+    const travel = Math.min(speed * 0.38, Math.min(w, h) * 0.46);
+    const ang = Math.atan2(vy || -1, vx || (index ? 1 : -1));
+    const landX = clampDie(pose.x + Math.cos(ang) * travel, w - s);
+    const landY = clampDie(pose.y + Math.sin(ang) * travel * 0.72, h - s);
+    const nestX = landX * 0.28 + spot.x * 0.72;
+    const nestY = landY * 0.28 + spot.y * 0.72;
+    const direction = index === 0 ? 1 : -1;
     return {
       el,
-      x: pose.x,
-      y: pose.y,
-      vx,
-      vy,
-      rx: pose.rx || 0,
-      ry: pose.ry || 0,
-      sx: vx * 1.6,
-      sy: -vy * 1.2,
+      pose,
+      nestX,
+      nestY,
+      direction,
+      rocks: 4 + index,
+      value: values[index],
     };
   });
-  let last = performance.now();
-  const start = last;
+  diceStage.classList.add("live");
+  const start = performance.now();
   await new Promise((resolve) => {
     const frame = (now) => {
-      const dt = Math.min(0.034, (now - last) / 1000);
-      last = now;
-      const flick = now - start < 980;
-      bodies.forEach((body) => {
-        const drag = Math.exp(-1.35 * dt);
-        body.vx *= drag;
-        body.vy *= drag;
-        body.x += body.vx * dt;
-        body.y += body.vy * dt;
-        const maxX = w - s;
-        const maxY = h - s;
-        if (body.x < 0) {
-          body.x = 0;
-          body.vx = Math.abs(body.vx) * 0.62;
-          body.sy += 240;
-        } else if (body.x > maxX) {
-          body.x = maxX;
-          body.vx = -Math.abs(body.vx) * 0.62;
-          body.sy -= 240;
+      const t = Math.min(1, (now - start) / duration);
+      const move = easeOutCubic(t);
+      const hop = Math.sin(Math.PI * t);
+      const settle = 1 - move;
+      plans.forEach((plan) => {
+        const x = plan.pose.x + (plan.nestX - plan.pose.x) * move;
+        const y = plan.pose.y + (plan.nestY - plan.pose.y) * move;
+        const rx = Math.sin(move * Math.PI * plan.rocks) * 46 * settle;
+        const ry = Math.sin(move * Math.PI * (plan.rocks - 1)) * 32 * settle;
+        const rz = plan.direction * 360 * move;
+        if (t < 0.88) {
+          const steps = Math.floor(move * plan.rocks);
+          plan.el.dataset.value = String(faces[steps % faces.length]);
+        } else {
+          plan.el.dataset.value = String(plan.value);
         }
-        if (body.y < 0) {
-          body.y = 0;
-          body.vy = Math.abs(body.vy) * 0.62;
-        } else if (body.y > maxY) {
-          body.y = maxY;
-          body.vy = -Math.abs(body.vy) * 0.62;
-        }
-        body.rx += body.sx * dt;
-        body.ry += body.sy * dt;
-        body.sx *= Math.exp(-0.9 * dt);
-        body.sy *= Math.exp(-0.9 * dt);
-        const lift = Math.min(26, Math.hypot(body.vx, body.vy) * 0.05);
-        if (flick && Math.random() < 0.45) body.el.dataset.value = String(1 + randInt(6));
-        setDiePose(body.el, body.x, body.y, body.rx, body.ry, lift);
+        setDiePose(plan.el, x, y, rx, ry, hop * 30, 1 + hop * 0.05, rz);
       });
-      if (now - start < 1080) requestAnimationFrame(frame);
+      if (t < 1) requestAnimationFrame(frame);
       else resolve();
     };
     requestAnimationFrame(frame);
+  });
+  diceStage.classList.remove("live");
+  dieEls.forEach((el) => {
+    const pose = el._pose;
+    if (!pose) return;
+    setDiePose(el, pose.x, pose.y, 0, 0, 0, 1, 0);
   });
   paintDice(d1, d2);
   await glideDiceHome();
