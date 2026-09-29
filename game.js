@@ -71,6 +71,7 @@ const state = {
   phase: "setup",
   owners: /** @type {Record<number, number|null>} */ ({}),
   upgrades: /** @type {Record<number, number>} */ ({}),
+  mortgages: /** @type {Record<number, boolean>} */ ({}),
   pot: 0,
   gyin: [],
   kyaw: [],
@@ -156,11 +157,33 @@ function minUpgradeInGroup(groupId) {
   return Math.min(...tilesInGroup(groupId).map((t) => state.upgrades[t.id] ?? 0));
 }
 
+function isMortgaged(id) {
+  return Boolean(state.mortgages[id]);
+}
+
+function loanPrincipal(tile) {
+  return Math.floor((tile.price || 0) / 2);
+}
+
+function loanRepay(tile) {
+  const principal = loanPrincipal(tile);
+  return principal + Math.floor(principal / 10);
+}
+
+function groupHasBuildings(groupId) {
+  return tilesInGroup(groupId).some((t) => (state.upgrades[t.id] ?? 0) > 0);
+}
+
+function groupHasLoan(groupId) {
+  return tilesInGroup(groupId).some((t) => isMortgaged(t.id));
+}
+
 function canUpgradeTile(player, tile, { ignoreBusy = false } = {}) {
   if (!player || player.broke || tile.type !== "property") return false;
   if (state.phase !== "roll" && state.phase !== "end") return false;
   if (state.owners[tile.id] !== player.index) return false;
   if (!ownsGroup(player, tile.group)) return false;
+  if (groupHasLoan(tile.group)) return false;
   const level = state.upgrades[tile.id] ?? 0;
   if (level >= 5) return false;
   if (level > minUpgradeInGroup(tile.group)) return false;
@@ -172,7 +195,7 @@ function rentFor(tile, visitor, diceTotal) {
   const ownerIndex = state.owners[tile.id];
   if (ownerIndex == null) return 0;
   const owner = state.players[ownerIndex];
-  if (!owner || owner.broke) return 0;
+  if (!owner || owner.broke || isMortgaged(tile.id)) return 0;
 
   if (tile.type === "transit") {
     const n = ownedOfType(owner, "transit").length;
@@ -515,6 +538,7 @@ function drawTile(tile, rect) {
 
   drawTileLabel(tile, rect);
   drawOwnership(tile, rect);
+  drawMortgageMark(tile, rect);
   ctx.restore();
 
   ctx.save();
@@ -664,6 +688,24 @@ function drawOwnership(tile, rect) {
     ctx.fillStyle = hotel ? "#c44536" : "#2f9a4e";
     ctx.fill();
   }
+}
+
+function drawMortgageMark(tile, rect) {
+  if (!isMortgaged(tile.id)) return;
+  ctx.save();
+  const w = Math.min(rect.w - 10, 34);
+  const h = Math.min(16, Math.max(11, rect.h * 0.22));
+  const x = rect.x + (rect.w - w) / 2;
+  const y = rect.y + (rect.h - h) / 2;
+  ctx.fillStyle = "rgba(120, 24, 18, 0.88)";
+  roundRect(ctx, x, y, w, h, 3);
+  ctx.fill();
+  ctx.fillStyle = "#fff6ea";
+  ctx.font = `700 ${Math.max(8, Math.min(11, h * 0.72))}px "Noto Sans Myanmar", "Noto Sans"`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("ပေါင်", x + w / 2, y + h / 2 + 0.5);
+  ctx.restore();
 }
 
 function drawTokens() {
@@ -997,6 +1039,7 @@ function getSnapshot() {
     players: state.players,
     owners: state.owners,
     upgrades: state.upgrades,
+    mortgages: state.mortgages,
     pot: state.pot,
     gyin: state.gyin.map((c) => c.id),
     kyaw: state.kyaw.map((c) => c.id),
@@ -1016,6 +1059,7 @@ function applySnapshot(snap) {
   state.players = snap.players;
   state.owners = snap.owners;
   state.upgrades = snap.upgrades;
+  state.mortgages = snap.mortgages ?? Object.fromEntries(TILES.map((t) => [t.id, false]));
   state.pot = snap.pot;
   state.gyin = cardsById(snap.gyin);
   state.kyaw = cardsById(snap.kyaw);
@@ -1061,10 +1105,23 @@ function sellUpgrades(player, need = Infinity) {
       .filter((t) => (state.upgrades[t.id] ?? 0) > 0)
       .sort((a, b) => (state.upgrades[b.id] ?? 0) - (state.upgrades[a.id] ?? 0))[0];
     if (!tile) break;
+    const level = state.upgrades[tile.id] ?? 0;
     const cost = GROUPS[tile.group]?.upgradeCost ?? 0;
     state.upgrades[tile.id] -= 1;
     player.money += Math.floor(cost / 2);
-    log(`${player.name} ${tile.name} က Wi-Fi/Generator ပြန်ရောင်းတယ်။`);
+    log(`${player.name} ${tile.name} က ${level >= 5 ? "ဟိုတယ်" : "အိမ်"} ပြန်ရောင်းတယ်။`);
+  }
+}
+
+function raiseLoans(player, need = Infinity) {
+  let guard = 0;
+  while (player.money < need && guard < 40) {
+    guard += 1;
+    const tile = ownedProperties(player)
+      .filter((t) => canMortgageTile(player, t, { ignoreBusy: true }))
+      .sort((a, b) => (b.price || 0) - (a.price || 0))[0];
+    if (!tile) break;
+    grantLoan(player, tile);
   }
 }
 
@@ -1079,6 +1136,7 @@ async function bankrupt(player, creditor) {
     } else {
       state.owners[tile.id] = null;
       state.upgrades[tile.id] = 0;
+      state.mortgages[tile.id] = false;
     }
   }
   if (creditor && !creditor.broke) {
@@ -1098,6 +1156,7 @@ async function bankrupt(player, creditor) {
 async function charge(player, amount, { toPlayer = null, toPot = false, reason = "" } = {}) {
   if (amount <= 0) return true;
   if (player.money < amount) sellUpgrades(player, amount);
+  if (player.money < amount) raiseLoans(player, amount);
   if (player.money >= amount) {
     player.money -= amount;
     if (toPlayer) toPlayer.money += amount;
@@ -1213,8 +1272,9 @@ function updateHUD() {
         .map((t) => {
           const color = t.group ? groupColor(t.group) : "#888";
           const up = state.upgrades[t.id] ?? 0;
-          const mark = up >= 5 ? " ⚡" : up ? ` ${"▂".repeat(up)}` : "";
-          return `<button type="button" data-tile="${t.id}" title="${esc(t.name)}" style="background:${safeColor(color)};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${esc(t.short || t.nameEn)}${mark}</button>`;
+          const mark = up >= 5 ? " H" : up ? ` ×${up}` : "";
+          const loan = isMortgaged(t.id) ? " ပေါင်" : "";
+          return `<button type="button" data-tile="${t.id}" title="${esc(t.name)}" style="background:${safeColor(color)};color:${t.group === "golden-mile" || t.group === "transit" ? "#fff" : "#1c140c"}">${esc(t.short || t.nameEn)}${mark}${loan}</button>`;
         })
         .join("");
       const flags = [
@@ -1266,7 +1326,7 @@ function renderInspect(id) {
   const group = tile.group ? GROUPS[tile.group] : null;
   const player = currentPlayer();
   const level = state.upgrades[id] ?? 0;
-  const upgradeLabels = ["မရှိ", "Wi-Fi ×1", "Wi-Fi ×2", "Wi-Fi ×3", "Wi-Fi ×4", "Generator"];
+  const upgradeLabels = ["မရှိ", "အိမ် ×1", "အိမ် ×2", "အိမ် ×3", "အိမ် ×4", "ဟိုတယ်"];
 
   let extra = "";
   if (tile.type === "property" && tile.rents) {
@@ -1277,7 +1337,7 @@ function renderInspect(id) {
         .slice(1)
         .map((r, i) => `<tr><td>${upgradeLabels[i + 1]}</td><td>${formatMMK(r)}</td></tr>`)
         .join("")}
-      <tr><td>Wi-Fi / Generator ကုန်ကျ</td><td>${formatMMK(group?.upgradeCost ?? 0)}</td></tr>
+      <tr><td>အိမ် / ဟိုတယ် ကုန်ကျ</td><td>${formatMMK(group?.upgradeCost ?? 0)}</td></tr>
     </table>`;
   } else if (tile.type === "transit") {
     extra = `<table class="rent-table">${tile.rents
@@ -1292,7 +1352,14 @@ function renderInspect(id) {
   const mine = actingNow(player);
   const canUp = mine && player && canUpgradeTile(player, tile);
   const canSell = mine && player && canDowngradeTile(player, tile);
+  const canLoan = mine && player && canMortgageTile(player, tile);
+  const canRepay = mine && player && canRepayLoan(player, tile);
   const refund = tile.group ? Math.floor((GROUPS[tile.group]?.upgradeCost ?? 0) / 2) : 0;
+  const buildWord = level >= 4 ? "ဟိုတယ်" : "အိမ်";
+  const sellWord = level >= 5 ? "ဟိုတယ်" : "အိမ်";
+  const loan = isMortgaged(id);
+  const principal = loanPrincipal(tile);
+  const due = loanRepay(tile);
   inspectBody.innerHTML = `<div class="inspect-card deed-card">
     <figure class="place-card">
       <img src="${placeArt(tile)}" alt="" />
@@ -1304,11 +1371,16 @@ function renderInspect(id) {
     <div class="deed-band" style="background:${group?.color ?? "#c9a15b"};color:${bandInk(group?.color ?? "#c9a15b")}">${esc(group ? group.label : tile.name)}</div>
     <div class="deed-body">
     <p>${tile.price ? `ဈေး ${formatMMK(tile.price)}` : tile.amount ? `ပေးရန် ${formatMMK(tile.amount)}` : ""}</p>
-    <p>${owner ? `ပိုင်ရှင်: ${owner.name} · ${upgradeLabels[level]}` : PROPERTY_TYPES.has(tile.type) ? "ပိုင်ရှင်မရှိ" : ""}</p>
+    <p>${owner ? `ပိုင်ရှင်: ${esc(owner.name)} · ${upgradeLabels[level]}` : PROPERTY_TYPES.has(tile.type) ? "ပိုင်ရှင်မရှိ" : ""}</p>
+    ${loan ? `<p>ဘဏ်ချေးငွေ ${formatMMK(principal)} · ပြန်ဆပ်ရန် ${formatMMK(due)} · ငှားရမ်းခမရ</p>` : ""}
     ${state.pot && tile.type === "safe" ? `<p>လက်ရှိအိုး: ${formatMMK(state.pot)}</p>` : ""}
+    <div class="deed-actions">
+    ${canUp ? `<button type="button" class="btn gold" id="btn-upgrade">${buildWord}ဆောက် (${formatMMK(group.upgradeCost)})</button>` : ""}
+    ${canSell ? `<button type="button" class="btn ghost" id="btn-downgrade">${sellWord}ရောင်း (+${formatMMK(refund)})</button>` : ""}
+    ${canLoan ? `<button type="button" class="btn ghost" id="btn-loan">ဘဏ်ချေး (${formatMMK(principal)})</button>` : ""}
+    ${canRepay ? `<button type="button" class="btn gold" id="btn-repay">ပြန်ဆပ် (${formatMMK(due)})</button>` : ""}
+    </div>
     ${extra}
-    ${canUp ? `<button type="button" class="btn gold" id="btn-upgrade" style="margin-top:0.6rem">တိုးတက်အောင်လုပ် (${formatMMK(group.upgradeCost)})</button>` : ""}
-    ${canSell ? `<button type="button" class="btn ghost" id="btn-downgrade" style="margin-top:0.45rem">ဖြုတ်မည် (+${formatMMK(refund)})</button>` : ""}
     </div>
   </div>`;
 
@@ -1316,6 +1388,10 @@ function renderInspect(id) {
   if (upBtn) upBtn.addEventListener("click", () => upgradeTile(tile));
   const downBtn = document.getElementById("btn-downgrade");
   if (downBtn) downBtn.addEventListener("click", () => downgradeTile(tile));
+  const loanBtn = document.getElementById("btn-loan");
+  if (loanBtn) loanBtn.addEventListener("click", () => mortgageTile(tile));
+  const repayBtn = document.getElementById("btn-repay");
+  if (repayBtn) repayBtn.addEventListener("click", () => repayLoan(tile));
 }
 
 function selectTile(id) {
@@ -1339,10 +1415,11 @@ function downgradeTile(tile) {
   const player = currentPlayer();
   if (!actingNow(player) || !canDowngradeTile(player, tile)) return;
   const cost = GROUPS[tile.group]?.upgradeCost ?? 0;
+  const wasHotel = (state.upgrades[tile.id] ?? 0) >= 5;
   state.upgrades[tile.id] -= 1;
   const refund = Math.floor(cost / 2);
   player.money += refund;
-  log(`${player.name} ${tile.name} က တပ်ဆင်မှု ဖြုတ်ပြီး ${formatMMK(refund)} ပြန်ရတယ်။`);
+  log(`${player.name} ${tile.name} က ${wasHotel ? "ဟိုတယ်" : "အိမ်"} ပြန်ရောင်းပြီး ${formatMMK(refund)} ရတယ်။`);
   updateHUD();
   drawBoard();
   publish();
@@ -1355,9 +1432,55 @@ function upgradeTile(tile, { ignoreBusy = false } = {}) {
   player.money -= cost;
   state.upgrades[tile.id] = (state.upgrades[tile.id] ?? 0) + 1;
   const level = state.upgrades[tile.id];
-  log(
-    `${player.name} က ${tile.name} ကို ${level >= 5 ? "Generator" : "Wi-Fi Router"} တပ်လိုက်တယ်။`,
-  );
+  log(`${player.name} က ${tile.name} မှာ ${level >= 5 ? "ဟိုတယ်" : "အိမ်"} ဆောက်တယ်။`);
+  updateHUD();
+  drawBoard();
+  publish();
+}
+
+function canMortgageTile(player, tile, { ignoreBusy = false } = {}) {
+  if (!player || player.broke || !tile?.price) return false;
+  if (state.phase !== "roll" && state.phase !== "end") return false;
+  if (state.owners[tile.id] !== player.index) return false;
+  if (isMortgaged(tile.id)) return false;
+  if ((state.upgrades[tile.id] ?? 0) > 0) return false;
+  if (tile.type === "property" && groupHasBuildings(tile.group)) return false;
+  return ignoreBusy || !state.busy;
+}
+
+function canRepayLoan(player, tile, { ignoreBusy = false } = {}) {
+  if (!player || player.broke || !tile?.price) return false;
+  if (state.phase !== "roll" && state.phase !== "end") return false;
+  if (state.owners[tile.id] !== player.index) return false;
+  if (!isMortgaged(tile.id)) return false;
+  if (player.money < loanRepay(tile)) return false;
+  return ignoreBusy || !state.busy;
+}
+
+function grantLoan(player, tile) {
+  const amount = loanPrincipal(tile);
+  state.mortgages[tile.id] = true;
+  player.money += amount;
+  log(`${player.name} ${tile.name} ကို ဘဏ်မှာ ပေါင်ပြီး ${formatMMK(amount)} ချေးတယ်။`);
+  return amount;
+}
+
+function mortgageTile(tile) {
+  const player = currentPlayer();
+  if (!actingNow(player) || !canMortgageTile(player, tile)) return;
+  grantLoan(player, tile);
+  updateHUD();
+  drawBoard();
+  publish();
+}
+
+function repayLoan(tile) {
+  const player = currentPlayer();
+  if (!actingNow(player) || !canRepayLoan(player, tile)) return;
+  const amount = loanRepay(tile);
+  player.money -= amount;
+  state.mortgages[tile.id] = false;
+  log(`${player.name} ${tile.name} ချေးငွေ ${formatMMK(amount)} ပြန်ဆပ်တယ်။`);
   updateHUD();
   drawBoard();
   publish();
@@ -1461,16 +1584,17 @@ async function applyEffect(player, card) {
         return (
           t.type === "property" &&
           ownsGroup(player, t.group) &&
+          !groupHasLoan(t.group) &&
           level < 4 &&
           level <= minUpgradeInGroup(t.group)
         );
       });
       if (candidate) {
         state.upgrades[candidate.id] = (state.upgrades[candidate.id] ?? 0) + 1;
-        log(`${player.name} ${candidate.name} မှာ Wi-Fi အလကား တပ်တယ်။`);
+        log(`${player.name} ${candidate.name} မှာ အိမ် အလကား ဆောက်တယ်။`);
       } else {
         credit(player, 40_000);
-        log(`${player.name} Wi-Fi တပ်စရာမရှိလို့ ၄၀,၀၀၀ ကျပ် ယူတယ်။`);
+        log(`${player.name} အိမ်ဆောက်စရာမရှိလို့ ၄၀,၀၀၀ ကျပ် ယူတယ်။`);
       }
       break;
     }
@@ -1595,14 +1719,20 @@ async function resolveTile(player, dice) {
     const owner = state.players[ownerIndex];
     if (owner.index === player.index) {
       const up = canUpgradeTile(player, tile, { ignoreBusy: true });
+      const level = state.upgrades[tile.id] ?? 0;
+      const buildWord = level >= 4 ? "ဟိုတယ်" : "အိမ်";
+      let note = "အရောင်အစုံပိုင်မှ အိမ်ဆောက်လို့ရတယ်။";
+      if (up) note = `${buildWord} ဆောက်နိုင်တယ်။ အိမ် ၄ လုံးပြည့်မှ ဟိုတယ်။`;
+      else if (ownsGroup(player, tile.group) && groupHasLoan(tile.group)) note = "ဒီအရောင်မှာ ဘဏ်ချေးငွေ ရှိနေလို့ အရင်ပြန်ဆပ်ပါ။";
+      else if (ownsGroup(player, tile.group)) note = "ဒီအရောင်မှာ အိမ်အရေအတွက် တူအောင် အရင်ဆောက်ပါ။";
       const choice = await openModal({
         kicker: "ကိုယ်ပိုင်ကွက်",
         title: tile.name,
         accent: groupColor(tile.group),
-        body: `<p>ကိုယ်ပိုင်မြေပေါ် ရောက်နေတယ်။ ${up ? "Wi-Fi Router သို့မဟုတ် Generator တပ်နိုင်တယ်။" : ownsGroup(player, tile.group) ? "ဒီအရောင်မှာ အဆင့်တူအောင် အရင်တပ်ပါ။" : "အရောင်အစုံပိုင်မှ တိုးတက်အောင်လုပ်လို့ရတယ်။"}</p>`,
+        body: `<p>ကိုယ်ပိုင်မြေပေါ် ရောက်နေတယ်။ ${note}</p>`,
         buttons: up
           ? [
-              { label: `တပ်မည် (${formatMMK(GROUPS[tile.group].upgradeCost)})`, className: "gold", value: "up" },
+              { label: `${buildWord}ဆောက် (${formatMMK(GROUPS[tile.group].upgradeCost)})`, className: "gold", value: "up" },
               { label: "ထားမည်", value: "skip" },
             ]
           : [{ label: "ကောင်းပြီ", className: "primary", value: "ok" }],
@@ -1617,6 +1747,17 @@ async function resolveTile(player, dice) {
         title: tile.name,
         body: `<p>${owner.name} ဒေဝါလီဖြစ်နေလို့ ငှားရမ်းခ မပေးရ။</p>`,
         buttons: [{ label: "ကံကောင်းတယ်", className: "primary", value: "ok" }],
+      });
+      return;
+    }
+
+    if (isMortgaged(tile.id)) {
+      await openModal({
+        kicker: "ဘဏ်ချေးငွေ",
+        title: tile.name,
+        accent: "#8a3b2b",
+        body: `<p>${owner.name} က ဒီကွက်ကို ဘဏ်မှာ ပေါင်ထားလို့ ငှားရမ်းခ မပေးရ။</p>`,
+        buttons: [{ label: "ကောင်းပြီ", className: "primary", value: "ok" }],
       });
       return;
     }
@@ -1811,6 +1952,7 @@ function createPlayers(entries) {
 function resetBoard() {
   state.owners = Object.fromEntries(TILES.map((t) => [t.id, null]));
   state.upgrades = Object.fromEntries(TILES.map((t) => [t.id, 0]));
+  state.mortgages = Object.fromEntries(TILES.map((t) => [t.id, false]));
   state.pot = 0;
   state.gyin = shuffle(GYIN_DECK);
   state.kyaw = shuffle(KYAW_DECK);
@@ -2042,10 +2184,12 @@ function deedChecks(player, attr) {
   if (!deeds.length) return `<p class="meta">ကွက်မရှိ</p>`;
   return deeds
     .map((tile) => {
-      const locked = (state.upgrades[tile.id] ?? 0) > 0;
+      const level = state.upgrades[tile.id] ?? 0;
+      const locked = level > 0;
+      const note = level >= 5 ? " · ဟိုတယ်" : level ? " · အိမ်" : isMortgaged(tile.id) ? " · ပေါင်" : "";
       return `<label class="deed ${locked ? "locked" : ""}">
         <input type="checkbox" ${attr} value="${tile.id}" ${locked ? "disabled" : ""} />
-        <span>${esc(tile.short || tile.name)}${locked ? " · Wi-Fi" : ""}</span>
+        <span>${esc(tile.short || tile.name)}${note}</span>
       </label>`;
     })
     .join("");
@@ -2135,8 +2279,8 @@ function tradeProblem(offer) {
   const to = state.players[offer.to];
   if (!from || !to || from.broke || to.broke || from.index === to.index) return "မိတ်ဖက်မမှန်ပါ။";
   const owns = (id, player) => state.owners[id] === player.index && (state.upgrades[id] ?? 0) === 0;
-  if (offer.giveIds.some((id) => !owns(id, from))) return "ပေးမည့်ကွက်မှာ Wi-Fi ရှိနေတယ်။";
-  if (offer.takeIds.some((id) => !owns(id, to))) return "ယူမည့်ကွက်မှာ Wi-Fi ရှိနေတယ်။";
+  if (offer.giveIds.some((id) => !owns(id, from))) return "ပေးမည့်ကွက်မှာ အိမ် သို့မဟုတ် ဟိုတယ် ရှိနေတယ်။";
+  if (offer.takeIds.some((id) => !owns(id, to))) return "ယူမည့်ကွက်မှာ အိမ် သို့မဟုတ် ဟိုတယ် ရှိနေတယ်။";
   if (offer.giveCash < 0 || offer.giveCash > from.money) return "ပေးမည့်ငွေ မလုံလောက်ပါ။";
   if (offer.takeCash < 0 || offer.takeCash > to.money) return "ယူမည့်ငွေ မလုံလောက်ပါ။";
   if (offer.givePass && from.jailPasses < 1) return "လွတ်ကတ် မရှိပါ။";
@@ -2447,13 +2591,15 @@ function bindGame() {
       body: `<div class="rules">
         <p>ဒီစက်မှာ ၂–၄ ယောက်၊ သို့မဟုတ် <strong>အခန်းဖွင့်</strong>ပြီး ကုဒ်ဝေ။ လစာကွက်ကျရင် ${formatMMK(CONFIG.goSalary)}။</p>
         <h3>မြေနှင့် ငှားရမ်းခ</h3>
-        <p>ပိုင်ရှင်မရှိသော ကွက်ကို ဝယ်။ သူများကွက်ပေါ်ကျရင် ငှားရမ်းခပေး။ အရောင်အစုံပိုင်ရင် Wi-Fi Router (၄ လုံး) နဲ့ Generator တပ်ပြီး ငှားရမ်းခတက်တယ်။</p>
+        <p>ပိုင်ရှင်မရှိသော ကွက်ကို ဝယ်။ သူများကွက်ပေါ်ကျရင် ငှားရမ်းခပေး။ အရောင်အစုံပိုင်ရင် အိမ် ၄ လုံး၊ ပြီးမှ ဟိုတယ် တစ်လုံး ဆောက်လို့ရတယ်။ အိမ်အရေအတွက်ကို အရောင်တစ်ခုထဲမှာ တူအောင် ဆောက်။</p>
         <h3>ယာဉ်နှင့် ဘေလ်</h3>
         <p>YBS, Grab, Bolt, ရထားဝိုင်း — ပိုင်သည့်စင်းရေအလိုက် ငှားရမ်းခ။ EPC မီတာဘေလ်နဲ့ ရေဘေလ်က အန်စာတုံးပေါ် မူတည်။</p>
         <h3>ဂျင်း နှင့် ၉ ကျော်တယ်</h3>
         <p>ဂျင်းက ဒဏ်တွေ (ဆေထိုးခံရ၊ ပလပ်ကျွတ်)။ ၉ ကျော်တယ်က ဆုတွေ (ဒိုင်ရှိုး၊ SKB Status)။</p>
         <h3>လဲလှယ်</h3>
-        <p>သင့်အလှည့်မှာ ညာဘက်ကတ်က <strong>လဲလှယ်</strong> နဲ့ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ Wi-Fi သို့မဟုတ် Generator တပ်ထားသော ကွက်ကို ကွက်အချက်အလက်မှာ <strong>ဖြုတ်မည်</strong> နှိပ်ပြီးမှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
+        <p>သင့်အလှည့်မှာ ညာဘက်ကတ်က <strong>လဲလှယ်</strong> နဲ့ ကွက်၊ ငွေ၊ လွတ်ကတ် လဲနိုင်တယ်။ အိမ် သို့မဟုတ် ဟိုတယ် ရှိသော ကွက်ကို ကွက်အချက်အလက်မှာ <strong>ရောင်း</strong> နှိပ်ပြီးမှ လဲရမယ်။ တစ်ဖက်က လက်ခံမှ ပြီးတယ်။</p>
+        <h3>ဘဏ်ချေးငွေ</h3>
+        <p>ကွက်ကို နှိပ်ပြီး <strong>ဘဏ်ချေး</strong> ဆိုရင် ဈေးတစ်ဝက် ရတယ်။ ပေါင်ထားချိန် ငှားရမ်းခ မရ။ အိမ်ရှိရင် အရင်ရောင်း။ ပြန်ဆပ်ရင် ချေးငွေပေါ် ၁၀% တိုးပေး။ ပိုက်ဆံမလောက်လို့ ဒဏ်ပေးရရင် အိမ်ရောင်းပြီးမှ ကွက်တွေကို ဘဏ်က အလိုအလျောက် ပေါင်ယူတယ်။</p>
         <h3>ရွာပြင်</h3>
         <p>ရွာပြင်ပို့ခံရရင် ဒဏ်ကြေး ${formatMMK(CONFIG.jailFine)}၊ လွတ်ကတ်၊ သို့မဟုတ် ဒိုင်ဗယ်။ သုံးအလှည့်ဆိုရင် မဖြစ်မနေ ပေးထွက်ရမယ်။ အန်စာတုံးကို ဆွဲပြီး ပစ်လှည့်နိုင်တယ်။ အလှည့်ပြီးရင် ညာဘက်ကတ်က <strong>ပြီးပြီ</strong> ကို နှိပ်။</p>
       </div>`,

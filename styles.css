@@ -986,6 +986,27 @@ input {
   opacity: 0.45;
 }
 
+.deed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.deed-actions:empty {
+  display: none;
+}
+
+.deed-actions .btn {
+  margin-top: 0;
+}
+
+.deed-card .btn.ghost {
+  color: #2a1a08;
+  background: rgba(36, 24, 15, 0.06);
+  border-color: rgba(36, 24, 15, 0.22);
+}
+
 .trade-field {
   display: grid;
   gap: 0.25rem;

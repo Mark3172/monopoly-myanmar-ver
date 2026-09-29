@@ -25,7 +25,7 @@ export const PLAYER_PALETTE = [
 
 export const DEFAULT_NAMES = ["ကိုမြို", "မသီရိ", "ကိုဇော်", "မအိ"];
 
-/** Color-group metadata. upgradeCost is the price of one Wi-Fi router (or the Generator). */
+/** Color-group metadata. upgradeCost is the price of one house, or the hotel. */
 export const GROUPS = {
   "street-food": {
     id: "street-food",
@@ -101,7 +101,7 @@ export const GROUPS = {
 
 /**
  * Classic 40-tile perimeter, clockwise from GO (bottom-right).
- * Property rents: [base, 1 router, 2, 3, 4, generator]. rentSet is monopoly with 0 upgrades.
+ * Property rents: [base, 1 house, 2, 3, 4, hotel]. rentSet is monopoly with 0 houses.
  * Transit rents: index = number owned (1–4).
  */
 export const TILES = [
@@ -568,7 +568,7 @@ export const GYIN_DECK = [
     id: "meter-audit",
     title: "မီတာစစ်ဆေး",
     titleEn: "Meter Audit",
-    body: "EPC က စစ်လာတယ်။ Wi-Fi router တစ်လုံးကို ၁၅,၀၀၀၊ Generator ကို ၄၀,၀၀၀ ပေး။",
+    body: "EPC က စစ်လာတယ်။ အိမ်တစ်လုံးကို ၁၅,၀၀၀၊ ဟိုတယ်ကို ၄၀,၀၀၀ ပေး။",
     effect: { type: "repairs", router: 15_000, generator: 40_000 },
   },
   {
@@ -731,9 +731,9 @@ export const KYAW_DECK = [
   },
   {
     id: "free-upgrade",
-    title: "Wi-Fi အလကား",
-    titleEn: "Complimentary Router",
-    body: "ပိုင်ဆိုင်ပြီးသား မြေကွက်တစ်ခုကို Wi-Fi router တစ်လုံး အလကား တပ်။ (မရှိရင် ၄၀,၀၀၀ ကျပ် ယူ)",
+    title: "အိမ်အလကား",
+    titleEn: "Free House",
+    body: "ပိုင်ဆိုင်ပြီးသား မြေကွက်တစ်ခုမှာ အိမ်တစ်လုံး အလကား ဆောက်။ (မရှိရင် ၄၀,၀၀၀ ကျပ် ယူ)",
     effect: { type: "freeRouter" },
   },
 ];

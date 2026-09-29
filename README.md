@@ -61,12 +61,13 @@ npm run preview
 1. Pick 2–4 players, names, and token colours.
 2. On your turn, roll. Tokens walk tile-by-tile. Crossing **လစာဝင်ပြီ** pays **200,000 Ks**.
 3. Unowned property can be bought. Landing on an opponent’s tile pays rent.
-4. Own a whole colour group to install **Wi-Fi Routers** (up to four) and then a **Generator**.
-5. On your turn, **လဲလှယ်** offers deeds, cash, or a village pass. The other player must accept. Deeds with Wi-Fi or a Generator cannot be traded until those are sold.
-6. Tap either die to roll. When the turn is finished, press the gold **ပြီးပြီ** seal.
-7. **ဂျင်း** cards are setbacks. **၉ ကျော်တယ်** cards are flexes and cash.
-8. **ရွာပြင်ပို့ခံရ** sends you to jail. Pay 50,000 Ks, use a village pass, or wait for doubles (three turns max).
-9. Last player who is not bankrupt wins.
+4. Own a whole colour group to build **houses** (up to four, evenly) and then one **hotel**.
+5. On your turn, open a deed and choose **ဘဏ်ချေး** to mortgage it for half its price. Rent stops until you repay the loan plus 10%. Sell every house in that colour before mortgaging.
+6. On your turn, **လဲလှယ်** offers deeds, cash, or a village pass. The other player must accept. Deeds with a house or hotel cannot be traded until those are sold. Mortgaged deeds can be traded; the loan stays on the tile.
+7. Tap either die to roll. When the turn is finished, press the gold **ပြီးပြီ** seal.
+8. **ဂျင်း** cards are setbacks. **၉ ကျော်တယ်** cards are flexes and cash.
+9. **ရွာပြင်ပို့ခံရ** sends you to jail. Pay 50,000 Ks, use a village pass, or wait for doubles (three turns max).
+10. Last player who is not bankrupt wins.
 
 Keyboard: `Space` rolls when it is your turn. `Enter` confirms the open modal.
 
